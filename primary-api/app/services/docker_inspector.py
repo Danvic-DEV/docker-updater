@@ -1,8 +1,10 @@
+from typing import Any
+
 from docker import DockerClient
 from docker.errors import DockerException
 
 
-def _has_update_available(client: DockerClient, image_name: str, current_digest: str) -> bool:
+def _has_update_available(client: DockerClient, image_name: str) -> bool:
     """Check if an updated version of the image is available in the registry."""
     try:
         # Try to get registry data for the image
@@ -30,7 +32,7 @@ def _has_update_available(client: DockerClient, image_name: str, current_digest:
         return False
 
 
-def list_running_containers() -> list[dict]:
+def list_running_containers() -> list[dict[str, Any]]:
     try:
         client = DockerClient(base_url="unix://var/run/docker.sock")
         containers = client.containers.list()
@@ -38,14 +40,27 @@ def list_running_containers() -> list[dict]:
         
         for c in containers:
             image_name = c.image.tags[0] if c.image.tags else c.image.short_id
-            has_update = _has_update_available(client, image_name, c.image.id)
+            has_update = _has_update_available(client, image_name)
+            attrs = c.attrs
+            details = {
+                "labels": attrs.get("Config", {}).get("Labels") or {},
+                "env": attrs.get("Config", {}).get("Env") or [],
+                "cmd": attrs.get("Config", {}).get("Cmd") or [],
+                "entrypoint": attrs.get("Config", {}).get("Entrypoint") or [],
+                "ports": attrs.get("NetworkSettings", {}).get("Ports") or {},
+                "mounts": attrs.get("Mounts") or [],
+                "networks": attrs.get("NetworkSettings", {}).get("Networks") or {},
+                "restart_policy": attrs.get("HostConfig", {}).get("RestartPolicy") or {},
+            }
             
             result.append({
                 "name": c.name,
                 "image": image_name,
                 "id": c.short_id,
+                "image_id": c.image.id,
                 "status": c.status,
                 "has_update": has_update,
+                "details": details,
             })
         
         # Sort by has_update (True first), then by name

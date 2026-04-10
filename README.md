@@ -11,22 +11,29 @@ Pull and start the Primary container directly:
 
 ```bash
 docker run -d \
-	--name docker-updater-primary \
+	--name docker-updater \
 	--restart unless-stopped \
-	-p 5432:5432 \
 	-p 8000:8000 \
 	-p 5173:5173 \
-	-e ADMIN_API_TOKEN=change-me \
-	-e AGENT_IMAGE=ghcr.io/danvic-dev/docker-updater-agent:latest \
-	-e PRIMARY_EMBEDDED_AGENT_ENABLE=false \
 	-v primary_data:/config \
 	-v /var/run/docker.sock:/var/run/docker.sock \
 	ghcr.io/danvic-dev/docker-updater-primary:latest
 ```
 
+Optional env vars:
+
+```bash
+# Override the agent image used in generated bootstrap commands
+-e AGENT_IMAGE=ghcr.io/danvic-dev/docker-updater-agent:latest
+
+# Enable/disable the embedded agent inside primary
+-e PRIMARY_EMBEDDED_AGENT_ENABLE=true
+```
+
 Then open:
-- API docs: http://localhost:8000/docs
 - Web UI: http://localhost:5173
+
+(Port 8000 is exposed for agents only. Port 8001 for admin API is not exposed.)
 
 ## Quick Start (Fresh Install)
 
@@ -43,8 +50,12 @@ docker compose up --build
 ```
 
 3. Open:
-- API docs: http://localhost:8000/docs
 - Web UI: http://localhost:5173
+
+**Port layout:**
+- 8000: Agent API (exposed for agent heartbeat + job updates)
+- 8001: Admin API (internal only, not exposed - used by UI)
+- 5173: Web UI (exposed)
 
 ## Current Status
 
@@ -59,16 +70,17 @@ Implemented MVP with:
 
 The agent can run without persistent local storage. It only needs env vars and `/var/run/docker.sock` mounted.
 
-### 1) Create an enrollment code from Primary
+### 1) Create an enrollment code from UI
 
-Use the admin token configured on Primary (`ADMIN_API_TOKEN`, default: `dev-admin-token`):
+In the web UI (http://localhost:5173), go to Settings and create an enrollment code. Or use the admin API (internal only):
 
 ```bash
-curl -X POST http://localhost:8000/api/agents/enrollment-codes \
-	-H 'Authorization: Bearer dev-admin-token' \
+curl -X POST http://localhost:8001/api/agents/enrollment-codes \
 	-H 'Content-Type: application/json' \
 	-d '{"ttl_minutes":60}'
 ```
+
+Note: This endpoint is only available on port 8001, which is not exposed outside the container. The web UI is the primary interface for creating enrollment codes.
 
 ### 2) Start agent with env vars only
 
@@ -85,11 +97,32 @@ docker run -d \
 
 The agent auto-enrolls on startup, receives a per-agent token, and uses it for API auth during that run.
 
-### Auth notes
+### Architecture
 
-- Agent auth is per-agent token only (issued during enrollment).
-- Enrollment codes are one-time use and time-limited.
-- Admin operations (creating enrollment codes / bootstrap commands) require `ADMIN_API_TOKEN`.
+The system uses a **dual-port security boundary** model:
+
+- **Port 8000 (Agent API)**: Exposed externally
+  - Agent heartbeat, job polling, and progress updates
+  - Authentication: Per-agent bearer tokens (issued after enrollment)
+  - Used by: Remote agents only
+
+- **Port 8001 (Admin API)**: Internal only, not exposed
+  - Enrollment code generation and bootstrap command generation
+  - Job creation and management
+  - Container inventory queries
+  - Authentication: None (internal only)
+  - Used by: Web UI only
+
+- **Port 5173 (Web UI)**: Exposed externally
+  - React app served by Vite
+  - In dev: Proxies admin API calls through `/admin-api` to internal port 8001
+  - In prod: Direct calls to `localhost:8001` (same container)
+
+**Security Model:**
+- External callers can only reach ports 8000 (agents) and 5173 (UI)
+- Port 8001 is bound to localhost and inaccessible from outside the container
+- UI operations cannot be called directly from outside; only agents with valid per-agent tokens can access the API
+- Each agent gets a unique bearer token after enrollment; tokens are never shared
 
 ## GHCR Auto Build
 
@@ -102,3 +135,16 @@ GitHub Actions publish separate images to GHCR with path-based triggers:
 Workflows:
 - `.github/workflows/build-primary.yml`
 - `.github/workflows/build-agent.yml`
+
+## Deployment Notes
+
+**Development (docker compose up):**
+- Browser on host machine cannot directly reach internal port 8001
+- Solution: Vite dev server proxies `/admin-api/*` to `localhost:8001` inside container
+- UI calls: `http://localhost:5173/admin-api/api/...` → proxied to `:8001`
+
+**Production (docker run):**
+- Container serves UI and APIs together
+- Browser runs inside container or as request from host
+- UI calls: `http://localhost:8001/api/...` directly (both in same container)
+- Agents from external networks call: `http://<container-host>:8000/api/...` with token auth

@@ -90,6 +90,40 @@ class PostgresStore:
                     )
                     """
                 )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS container_inventory (
+                        container_name TEXT PRIMARY KEY,
+                        container_id TEXT NOT NULL,
+                        image_ref TEXT NOT NULL,
+                        image_id TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        has_update BOOLEAN NOT NULL,
+                        details JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        first_seen TIMESTAMPTZ NOT NULL,
+                        last_seen TIMESTAMPTZ NOT NULL,
+                        last_changed TIMESTAMPTZ NOT NULL,
+                        observation_count INTEGER NOT NULL DEFAULT 0,
+                        is_active BOOLEAN NOT NULL DEFAULT TRUE
+                    )
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS container_inventory_history (
+                        id BIGSERIAL PRIMARY KEY,
+                        container_name TEXT NOT NULL,
+                        container_id TEXT NOT NULL,
+                        image_ref TEXT NOT NULL,
+                        image_id TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        has_update BOOLEAN NOT NULL,
+                        details JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        recorded_at TIMESTAMPTZ NOT NULL,
+                        event_type TEXT NOT NULL
+                    )
+                    """
+                )
 
     def _hash_secret(self, value: str) -> str:
         return hashlib.sha256(value.encode("utf-8")).hexdigest()
@@ -326,6 +360,211 @@ class PostgresStore:
                 )
                 row = cur.fetchone()
                 return self._job_from_row(row) if row else None
+
+    def _append_inventory_history(self, cur: psycopg.Cursor[Any], item: dict[str, Any], event_type: str, now: datetime) -> None:
+        cur.execute(
+            """
+            INSERT INTO container_inventory_history (
+                container_name,
+                container_id,
+                image_ref,
+                image_id,
+                status,
+                has_update,
+                details,
+                recorded_at,
+                event_type
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+            """,
+            (
+                item["name"],
+                item["id"],
+                item["image"],
+                item.get("image_id", ""),
+                item["status"],
+                bool(item.get("has_update", False)),
+                psycopg.types.json.Jsonb(item.get("details") or {}),
+                now,
+                event_type,
+            ),
+        )
+
+    def sync_container_inventory(self, containers: list[dict[str, Any]]) -> None:
+        now = datetime.now(UTC)
+        seen_names = [str(item["name"]) for item in containers]
+
+        with self._connect() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                for item in containers:
+                    cur.execute(
+                        """
+                        SELECT * FROM container_inventory WHERE container_name = %s
+                        """,
+                        (item["name"],),
+                    )
+                    existing = cur.fetchone()
+
+                    if not existing:
+                        cur.execute(
+                            """
+                            INSERT INTO container_inventory (
+                                container_name,
+                                container_id,
+                                image_ref,
+                                image_id,
+                                status,
+                                has_update,
+                                details,
+                                first_seen,
+                                last_seen,
+                                last_changed,
+                                observation_count,
+                                is_active
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, 1, TRUE)
+                            """,
+                            (
+                                item["name"],
+                                item["id"],
+                                item["image"],
+                                item.get("image_id", ""),
+                                item["status"],
+                                bool(item.get("has_update", False)),
+                                psycopg.types.json.Jsonb(item.get("details") or {}),
+                                now,
+                                now,
+                                now,
+                            ),
+                        )
+                        self._append_inventory_history(cur, item, "discovered", now)
+                        continue
+
+                    details_now = item.get("details") or {}
+                    changed = (
+                        existing["container_id"] != item["id"]
+                        or existing["image_ref"] != item["image"]
+                        or existing["image_id"] != item.get("image_id", "")
+                        or existing["status"] != item["status"]
+                        or bool(existing["has_update"]) != bool(item.get("has_update", False))
+                        or (existing.get("details") or {}) != details_now
+                        or not bool(existing["is_active"])
+                    )
+
+                    cur.execute(
+                        """
+                        UPDATE container_inventory
+                        SET
+                            container_id = %s,
+                            image_ref = %s,
+                            image_id = %s,
+                            status = %s,
+                            has_update = %s,
+                            details = %s::jsonb,
+                            last_seen = %s,
+                            last_changed = CASE WHEN %s THEN %s ELSE last_changed END,
+                            observation_count = observation_count + 1,
+                            is_active = TRUE
+                        WHERE container_name = %s
+                        """,
+                        (
+                            item["id"],
+                            item["image"],
+                            item.get("image_id", ""),
+                            item["status"],
+                            bool(item.get("has_update", False)),
+                            psycopg.types.json.Jsonb(details_now),
+                            now,
+                            changed,
+                            now,
+                            item["name"],
+                        ),
+                    )
+
+                    if changed:
+                        self._append_inventory_history(cur, item, "changed", now)
+
+                # Mark previously seen containers as missing when they disappear from current discovery.
+                if seen_names:
+                    cur.execute(
+                        """
+                        SELECT * FROM container_inventory
+                        WHERE is_active = TRUE
+                          AND NOT (container_name = ANY(%s))
+                        """,
+                        (seen_names,),
+                    )
+                else:
+                    cur.execute("SELECT * FROM container_inventory WHERE is_active = TRUE")
+
+                missing_rows = cur.fetchall()
+                for row in missing_rows:
+                    snapshot = {
+                        "name": row["container_name"],
+                        "id": row["container_id"],
+                        "image": row["image_ref"],
+                        "image_id": row["image_id"],
+                        "status": "missing",
+                        "has_update": bool(row["has_update"]),
+                        "details": row.get("details") or {},
+                    }
+                    self._append_inventory_history(cur, snapshot, "missing", now)
+
+                if seen_names:
+                    cur.execute(
+                        """
+                        UPDATE container_inventory
+                        SET is_active = FALSE, last_changed = %s
+                        WHERE is_active = TRUE
+                          AND NOT (container_name = ANY(%s))
+                        """,
+                        (now, seen_names),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        UPDATE container_inventory
+                        SET is_active = FALSE, last_changed = %s
+                        WHERE is_active = TRUE
+                        """,
+                        (now,),
+                    )
+
+    def list_container_inventory(self, include_inactive: bool = True) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                if include_inactive:
+                    cur.execute(
+                        """
+                        SELECT *
+                        FROM container_inventory
+                        ORDER BY is_active DESC, has_update DESC, container_name ASC
+                        """
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT *
+                        FROM container_inventory
+                        WHERE is_active = TRUE
+                        ORDER BY has_update DESC, container_name ASC
+                        """
+                    )
+                return [dict(row) for row in cur.fetchall()]
+
+    def list_container_inventory_history(self, limit: int = 500) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """
+                    SELECT *
+                    FROM container_inventory_history
+                    ORDER BY recorded_at DESC, id DESC
+                    LIMIT %s
+                    """,
+                    (max(1, min(limit, 5000)),),
+                )
+                return [dict(row) for row in cur.fetchall()]
 
 
 store = PostgresStore()
