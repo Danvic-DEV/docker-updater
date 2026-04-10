@@ -29,20 +29,15 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [bootstrap, setBootstrap] = useState<{ command: string; expires_at: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [updateModal, setUpdateModal] = useState<{ target: DockerTarget; agentId: string } | null>(null);
   const [onboardingForm, setOnboardingForm] = useState<{ agent_id: string; agent_name: string; primary_api_base_url: string; agent_image: string }>({
     agent_id: "",
     agent_name: "",
     primary_api_base_url: "",
     agent_image: "ghcr.io/danvic-dev/docker-updater-agent:latest",
   });
-  const [form, setForm] = useState<{ target_ref: string; source_type: "registry" | "git"; target_agent_id: string }>({
-    target_ref: "",
-    source_type: "registry",
-    target_agent_id: "",
-  });
 
   const agentMap = useMemo(() => new Map(agents.map((a) => [a.agent_id, a.name])), [agents]);
-  const canSubmit = useMemo(() => form.target_ref.trim() && form.target_agent_id.trim(), [form]);
   const canGenerateBootstrap = useMemo(
     () => onboardingForm.agent_id.trim() && onboardingForm.agent_name.trim(),
     [onboardingForm]
@@ -57,8 +52,8 @@ export function App() {
       setTargets(nextTargets);
       setError(null);
 
-      if (!form.target_agent_id && nextAgents[0]) {
-        setForm((current) => ({ ...current, target_agent_id: nextAgents[0].agent_id }));
+      if (updateModal && !updateModal.agentId && nextAgents[0]) {
+        setUpdateModal((current) => ({ ...current!, agentId: nextAgents[0].agent_id }));
       }
 
       if (!onboardingForm.primary_api_base_url) {
@@ -69,12 +64,17 @@ export function App() {
     }
   }
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+  async function onSubmitUpdate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canSubmit) return;
+    if (!updateModal?.target || !updateModal?.agentId) return;
+
     try {
-      await createJob({ ...form });
-      setForm((current) => ({ ...current, target_ref: "" }));
+      await createJob({
+        target_ref: updateModal.target.image,
+        source_type: "registry",
+        target_agent_id: updateModal.agentId,
+      });
+      setUpdateModal(null);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create job");
@@ -87,24 +87,13 @@ export function App() {
     return () => window.clearInterval(id);
   }, []);
 
-  function onTargetRefChange(event: ChangeEvent<HTMLInputElement>) {
-    setForm((curr) => ({ ...curr, target_ref: event.target.value }));
-  }
-
-  function onSourceTypeChange(event: ChangeEvent<HTMLSelectElement>) {
-    setForm((curr) => ({ ...curr, source_type: event.target.value === "git" ? "git" : "registry" }));
-  }
-
-  function onAgentChange(event: ChangeEvent<HTMLSelectElement>) {
-    setForm((curr) => ({ ...curr, target_agent_id: event.target.value }));
-  }
-
-  function selectTarget(target: DockerTarget) {
-    setForm((curr) => ({ ...curr, target_ref: target.image, source_type: "registry" }));
-  }
-
   function onOnboardingFieldChange(event: ChangeEvent<HTMLInputElement>) {
     setOnboardingForm((curr) => ({ ...curr, [event.target.name]: event.target.value }));
+  }
+
+  function openUpdateModal(target: DockerTarget) {
+    const firstAgentId = agents.length > 0 ? agents[0].agent_id : "";
+    setUpdateModal({ target, agentId: firstAgentId });
   }
 
   async function onGenerateBootstrapCommand(event: FormEvent<HTMLFormElement>) {
@@ -247,48 +236,8 @@ export function App() {
       </section>
 
       <section className="main-grid">
-        {/* Left: Dispatch & Agents */}
+        {/* Left: Agents */}
         <aside className="sidebar">
-          <article className="card">
-            <h2>Dispatch Update</h2>
-            <form onSubmit={onSubmit} className="form">
-              <label>
-                Image / Tag
-                <input
-                  value={form.target_ref}
-                  onChange={onTargetRefChange}
-                  placeholder="nginx:1.27"
-                />
-              </label>
-
-              <label>
-                Source
-                <select value={form.source_type} onChange={onSourceTypeChange}>
-                  <option value="registry">Registry</option>
-                  <option value="git">Git</option>
-                </select>
-              </label>
-
-              <label>
-                Agent
-                <select value={form.target_agent_id} onChange={onAgentChange}>
-                  {agents.length === 0 ? (
-                    <option disabled>No agents online</option>
-                  ) : (
-                    agents.map((agent) => (
-                      <option key={agent.agent_id} value={agent.agent_id}>
-                        {agent.name}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </label>
-
-              <button type="submit" disabled={!canSubmit}>
-                Run Update
-              </button>
-            </form>
-          </article>
 
           <article className="card">
             <h2>Agents</h2>
@@ -342,7 +291,7 @@ export function App() {
                   </tr>
                 ) : (
                   targets.map((target) => (
-                    <tr key={target.id} className="clickable" onClick={() => selectTarget(target)} title="Click to dispatch">
+                    <tr key={target.id}>
                       <td>
                         <strong>{target.name}</strong>
                       </td>
@@ -350,7 +299,9 @@ export function App() {
                       <td>
                         <Badge value={target.status} />
                       </td>
-                      <td className="action-cell">→</td>
+                      <td className="action-cell">
+                        <button className="action-btn" onClick={() => openUpdateModal(target)} title="Update container">↗</button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -395,6 +346,39 @@ export function App() {
           </article>
         </section>
       </section>
+
+      {/* Update Modal */}
+      {updateModal && (
+        <div className="modal-overlay" onClick={() => setUpdateModal(null)}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <h3>Update {updateModal.target.name}</h3>
+            <p className="muted">{updateModal.target.image}</p>
+            <form onSubmit={onSubmitUpdate} className="form">
+              <label>
+                Select Agent
+                <select
+                  value={updateModal.agentId}
+                  onChange={(e) =>
+                    setUpdateModal((current) => ({ ...current!, agentId: e.target.value }))
+                  }
+                >
+                  {agents.map((agent) => (
+                    <option key={agent.agent_id} value={agent.agent_id}>
+                      {agent.name} — {agent.status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="modal-actions">
+                <button type="button" onClick={() => setUpdateModal(null)} className="btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit">Run Update</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
         </>
       )}
     </main>
