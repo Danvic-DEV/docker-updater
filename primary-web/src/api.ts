@@ -24,7 +24,12 @@ export async function fetchDockerTargets(): Promise<DockerTarget[]> {
   return parseJson<DockerTarget[]>(await fetch(`${ADMIN_API_BASE_URL}/api/docker/targets`));
 }
 
-export async function createJob(input: { target_ref: string; source_type: string; target_agent_id: string }): Promise<Job> {
+export async function createJob(input: {
+  target_ref: string;
+  target_container_name?: string;
+  source_type: string;
+  target_agent_id: string;
+}): Promise<Job> {
   return parseJson<Job>(
     await fetch(`${ADMIN_API_BASE_URL}/api/jobs`, {
       method: "POST",

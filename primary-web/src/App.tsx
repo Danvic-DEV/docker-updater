@@ -77,6 +77,7 @@ export function App() {
     try {
       await createJob({
         target_ref: updateModal.target.image,
+        target_container_name: updateModal.target.name,
         source_type: "registry",
         target_agent_id: updateModal.agentId,
       });

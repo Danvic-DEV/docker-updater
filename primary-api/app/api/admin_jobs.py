@@ -13,6 +13,7 @@ def _to_response(job: UpdateJob) -> JobResponse:
     return JobResponse(
         job_id=job.job_id,
         target_ref=job.target_ref,
+        target_container_name=job.target_container_name,
         source_type=job.source_type,
         target_agent_id=job.target_agent_id,
         status=job.status,
@@ -34,6 +35,7 @@ def create_job(payload: CreateJobRequest) -> JobResponse:
         UpdateJob(
             job_id=str(uuid.uuid4()),
             target_ref=payload.target_ref,
+            target_container_name=payload.target_container_name,
             source_type=payload.source_type,
             target_agent_id=payload.target_agent_id,
         )

@@ -8,6 +8,7 @@ export type Agent = {
 export type Job = {
   job_id: string;
   target_ref: string;
+  target_container_name?: string;
   source_type: string;
   target_agent_id: string;
   status: "queued" | "in_progress" | "completed" | "failed" | "rolled_back";

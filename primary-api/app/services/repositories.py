@@ -61,6 +61,7 @@ class PostgresStore:
                     CREATE TABLE IF NOT EXISTS update_jobs (
                         job_id TEXT PRIMARY KEY,
                         target_ref TEXT NOT NULL,
+                        target_container_name TEXT,
                         source_type TEXT NOT NULL,
                         target_agent_id TEXT NOT NULL REFERENCES agents(agent_id),
                         status TEXT NOT NULL,
@@ -70,6 +71,7 @@ class PostgresStore:
                     )
                     """
                 )
+                cur.execute("ALTER TABLE update_jobs ADD COLUMN IF NOT EXISTS target_container_name TEXT")
                 cur.execute(
                     """
                     CREATE TABLE IF NOT EXISTS agent_tokens (
@@ -225,6 +227,7 @@ class PostgresStore:
         return UpdateJob(
             job_id=row["job_id"],
             target_ref=row["target_ref"],
+            target_container_name=row.get("target_container_name"),
             source_type=row["source_type"],
             target_agent_id=row["target_agent_id"],
             status=row["status"],
@@ -281,14 +284,15 @@ class PostgresStore:
                 cur.execute(
                     """
                     INSERT INTO update_jobs (
-                        job_id, target_ref, source_type, target_agent_id, status, created_at, updated_at, logs
+                        job_id, target_ref, target_container_name, source_type, target_agent_id, status, created_at, updated_at, logs
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING *
                     """,
                     (
                         job.job_id,
                         job.target_ref,
+                        job.target_container_name,
                         job.source_type,
                         job.target_agent_id,
                         job.status,

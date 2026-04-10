@@ -19,6 +19,7 @@ class Agent(BaseModel):
 class UpdateJob(BaseModel):
     job_id: str
     target_ref: str
+    target_container_name: str | None = None
     source_type: Literal["registry", "git"]
     target_agent_id: str
     status: JobStatus = "queued"

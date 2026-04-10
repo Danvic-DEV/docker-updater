@@ -93,7 +93,12 @@ def next_job(agent_id: str, _: str = Depends(_authenticate_agent)) -> PullJobRes
     if not job:
         return None
 
-    return PullJobResponse(job_id=job.job_id, target_ref=job.target_ref, source_type=job.source_type)
+    return PullJobResponse(
+        job_id=job.job_id,
+        target_ref=job.target_ref,
+        target_container_name=job.target_container_name,
+        source_type=job.source_type,
+    )
 
 
 @router.post("/{agent_id}/inventory", response_model=AgentInventorySyncResponse)

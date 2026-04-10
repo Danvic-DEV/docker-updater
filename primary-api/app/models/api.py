@@ -63,6 +63,7 @@ class AgentResponse(BaseModel):
 
 class CreateJobRequest(BaseModel):
     target_ref: str = Field(description="Image tag or Git ref")
+    target_container_name: str | None = Field(default=None, description="Specific container name to update")
     source_type: str = Field(description="registry|git")
     target_agent_id: str
 
@@ -70,6 +71,7 @@ class CreateJobRequest(BaseModel):
 class JobResponse(BaseModel):
     job_id: str
     target_ref: str
+    target_container_name: str | None = None
     source_type: str
     target_agent_id: str
     status: JobStatus
@@ -81,6 +83,7 @@ class JobResponse(BaseModel):
 class PullJobResponse(BaseModel):
     job_id: str
     target_ref: str
+    target_container_name: str | None = None
     source_type: str
 
 

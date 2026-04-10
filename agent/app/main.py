@@ -48,7 +48,7 @@ def run() -> None:
                 got_job = True
                 job_id = job["job_id"]
                 api.report_progress(job_id=job_id, status="in_progress", log_line="Job accepted by agent")
-                success, logs = execute_update(job["target_ref"], job["source_type"])
+                success, logs = execute_update(job["target_ref"], job["source_type"], job.get("target_container_name"))
                 for line in logs:
                     api.report_progress(job_id=job_id, status="in_progress", log_line=line)
                 final_status = "completed" if success else "failed"
