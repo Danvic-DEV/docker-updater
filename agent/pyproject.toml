@@ -1,0 +1,10 @@
+[project]
+name = "docker-updater-agent"
+version = "0.1.0"
+description = "Remote polling agent for Docker Updater"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx==0.28.1",
+  "pydantic-settings==2.9.1",
+  "docker==7.1.0"
+]

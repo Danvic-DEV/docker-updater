@@ -1,0 +1,13 @@
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    app_env: str = Field(default="dev", alias="APP_ENV")
+    database_url: str = Field(alias="DATABASE_URL")
+    agent_shared_token: str = Field(default="dev-agent-token", alias="AGENT_SHARED_TOKEN")
+
+
+settings = Settings()

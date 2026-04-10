@@ -1,0 +1,46 @@
+services:
+  primary:
+    build:
+      context: .
+      dockerfile: ./primary/Dockerfile
+    environment:
+      POSTGRES_USER: docker_updater
+      POSTGRES_PASSWORD: docker_updater
+      POSTGRES_DB: docker_updater
+      PGDATA: /config
+      APP_ENV: dev
+      DATABASE_URL: postgresql+psycopg://docker_updater:docker_updater@127.0.0.1:5432/docker_updater
+      AGENT_SHARED_TOKEN: dev-agent-token
+      VITE_API_BASE_URL: http://localhost:8000
+    volumes:
+      - primary_data:/config
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "5432:5432"
+      - "8000:8000"
+      - "5173:5173"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  agent:
+    build:
+      context: ./agent
+    environment:
+      AGENT_ID: local-agent-1
+      AGENT_NAME: local-agent-1
+      PRIMARY_API_BASE_URL: http://primary:8000
+      AGENT_SHARED_TOKEN: dev-agent-token
+      POLL_INTERVAL_SECONDS: 5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./agent:/app
+    depends_on:
+      primary:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  primary_data:
