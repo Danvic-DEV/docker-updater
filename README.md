@@ -28,6 +28,10 @@ Optional env vars:
 
 # Enable/disable the embedded agent inside primary
 -e PRIMARY_EMBEDDED_AGENT_ENABLE=true
+
+# Optional: restrict allowed UI hostnames (comma-separated).
+# Default allows all hosts so reverse proxies work without file edits.
+-e VITE_ALLOWED_HOSTS=updater.example.com
 ```
 
 Then open:
