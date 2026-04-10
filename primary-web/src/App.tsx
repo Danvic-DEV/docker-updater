@@ -294,13 +294,20 @@ export function App() {
                     <tr key={target.id}>
                       <td>
                         <strong>{target.name}</strong>
+                        {target.has_update && <span className="update-badge">UPDATE</span>}
                       </td>
                       <td className="muted monospace">{target.image}</td>
                       <td>
                         <Badge value={target.status} />
                       </td>
                       <td className="action-cell">
-                        <button className="action-btn" onClick={() => openUpdateModal(target)} title="Update container">↗</button>
+                        <button 
+                          className={`action-btn ${target.has_update ? 'has-update' : ''}`}
+                          onClick={() => openUpdateModal(target)} 
+                          title={target.has_update ? "Update available - click to update" : "Pull latest image"}
+                        >
+                          ↗
+                        </button>
                       </td>
                     </tr>
                   ))

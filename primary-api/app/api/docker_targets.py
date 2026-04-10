@@ -6,5 +6,5 @@ router = APIRouter(prefix="/api/docker", tags=["docker"])
 
 
 @router.get("/targets")
-def docker_targets() -> list[dict[str, str]]:
+def docker_targets() -> list[dict]:
     return list_running_containers()

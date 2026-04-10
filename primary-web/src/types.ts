@@ -21,6 +21,7 @@ export type DockerTarget = {
   name: string;
   image: string;
   status: string;
+  has_update: boolean;
 };
 
 export type AgentBootstrapCommandResponse = {
