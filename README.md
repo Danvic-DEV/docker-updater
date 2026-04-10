@@ -5,6 +5,29 @@ Monorepo for a Docker update orchestration system with:
 - Primary web UI: React + Vite
 - Remote agent: Python polling worker
 
+## Install Primary with docker run
+
+Pull and start the Primary container directly:
+
+```bash
+docker run -d \
+	--name docker-updater-primary \
+	--restart unless-stopped \
+	-p 5432:5432 \
+	-p 8000:8000 \
+	-p 5173:5173 \
+	-e ADMIN_API_TOKEN=change-me \
+	-e AGENT_IMAGE=ghcr.io/danvic-dev/docker-updater-agent:latest \
+	-e PRIMARY_EMBEDDED_AGENT_ENABLE=false \
+	-v primary_data:/config \
+	-v /var/run/docker.sock:/var/run/docker.sock \
+	ghcr.io/danvic-dev/docker-updater-primary:latest
+```
+
+Then open:
+- API docs: http://localhost:8000/docs
+- Web UI: http://localhost:5173
+
 ## Quick Start (Fresh Install)
 
 1. Reset old local state (optional but recommended for clean-break auth):
@@ -57,7 +80,7 @@ docker run -d \
 	-e AGENT_NAME=<agent-name> \
 	-e ENROLLMENT_CODE=<code-from-step-1> \
 	-v /var/run/docker.sock:/var/run/docker.sock \
-	ghcr.io/<owner>/docker-updater-agent:latest
+	ghcr.io/danvic-dev/docker-updater-agent:latest
 ```
 
 The agent auto-enrolls on startup, receives a per-agent token, and uses it for API auth during that run.
@@ -71,9 +94,9 @@ The agent auto-enrolls on startup, receives a per-agent token, and uses it for A
 ## GHCR Auto Build
 
 GitHub Actions publish separate images to GHCR with path-based triggers:
-- Primary image: `ghcr.io/<owner>/docker-updater-primary`
+- Primary image: `ghcr.io/danvic-dev/docker-updater-primary`
 	- Triggered by changes under `primary/`, `primary-api/`, `primary-web/`, and `agent/`.
-- Agent image: `ghcr.io/<owner>/docker-updater-agent`
+- Agent image: `ghcr.io/danvic-dev/docker-updater-agent`
 	- Triggered by changes under `agent/`.
 
 Workflows:
