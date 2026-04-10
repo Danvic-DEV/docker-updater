@@ -10,6 +10,7 @@ services:
       PGDATA: /config
       APP_ENV: dev
       DATABASE_URL: postgresql+psycopg://docker_updater:docker_updater@127.0.0.1:5432/docker_updater
+      ADMIN_API_TOKEN: dev-admin-token
       AGENT_SHARED_TOKEN: dev-agent-token
       VITE_API_BASE_URL: http://localhost:8000
     volumes:

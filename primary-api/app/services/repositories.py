@@ -1,4 +1,6 @@
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
+import hashlib
+import secrets
 import time
 from typing import Any
 
@@ -66,6 +68,109 @@ class PostgresStore:
                         logs TEXT[] NOT NULL DEFAULT '{}'
                     )
                     """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS agent_tokens (
+                        token_hash TEXT PRIMARY KEY,
+                        agent_id TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+                        created_at TIMESTAMPTZ NOT NULL,
+                        last_used_at TIMESTAMPTZ NOT NULL,
+                        revoked BOOLEAN NOT NULL DEFAULT FALSE
+                    )
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS enrollment_codes (
+                        code_hash TEXT PRIMARY KEY,
+                        created_at TIMESTAMPTZ NOT NULL,
+                        expires_at TIMESTAMPTZ NOT NULL,
+                        revoked BOOLEAN NOT NULL DEFAULT FALSE
+                    )
+                    """
+                )
+
+    def _hash_secret(self, value: str) -> str:
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+    def create_enrollment_code(self, ttl_minutes: int) -> tuple[str, datetime]:
+        now = datetime.now(UTC)
+        expires_at = now + timedelta(minutes=ttl_minutes)
+        code = secrets.token_urlsafe(24)
+        code_hash = self._hash_secret(code)
+
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO enrollment_codes (code_hash, created_at, expires_at, revoked)
+                    VALUES (%s, %s, %s, FALSE)
+                    """,
+                    (code_hash, now, expires_at),
+                )
+
+        return code, expires_at
+
+    def consume_enrollment_code(self, code: str) -> bool:
+        code_hash = self._hash_secret(code)
+        with self._connect() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """
+                    UPDATE enrollment_codes
+                    SET revoked = TRUE
+                    WHERE code_hash = %s
+                      AND revoked = FALSE
+                      AND expires_at > NOW()
+                    RETURNING expires_at
+                    """,
+                    (code_hash,),
+                )
+                row = cur.fetchone()
+                return row is not None
+
+    def issue_agent_token(self, agent_id: str) -> str:
+        now = datetime.now(UTC)
+        token = secrets.token_urlsafe(32)
+        token_hash = self._hash_secret(token)
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO agent_tokens (token_hash, agent_id, created_at, last_used_at, revoked)
+                    VALUES (%s, %s, %s, %s, FALSE)
+                    """,
+                    (token_hash, agent_id, now, now),
+                )
+        return token
+
+    def get_agent_id_for_token(self, token: str) -> str | None:
+        token_hash = self._hash_secret(token)
+        with self._connect() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """
+                    SELECT agent_id
+                    FROM agent_tokens
+                    WHERE token_hash = %s AND revoked = FALSE
+                    """,
+                    (token_hash,),
+                )
+                row = cur.fetchone()
+                return row["agent_id"] if row else None
+
+    def touch_agent_token(self, token: str) -> None:
+        token_hash = self._hash_secret(token)
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE agent_tokens
+                    SET last_used_at = NOW()
+                    WHERE token_hash = %s
+                    """,
+                    (token_hash,),
                 )
 
     def _agent_from_row(self, row: dict[str, Any]) -> Agent:
