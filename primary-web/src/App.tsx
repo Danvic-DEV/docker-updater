@@ -56,9 +56,15 @@ export function App() {
         setUpdateModal((current) => ({ ...current!, agentId: nextAgents[0].agent_id }));
       }
 
-      if (!onboardingForm.primary_api_base_url) {
-        setOnboardingForm((current) => ({ ...current, primary_api_base_url: `${window.location.protocol}//${window.location.hostname}:58000` }));
-      }
+      setOnboardingForm((current) => {
+        if (current.primary_api_base_url) {
+          return current;
+        }
+        return {
+          ...current,
+          primary_api_base_url: `${window.location.protocol}//${window.location.hostname}:58000`,
+        };
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     }
