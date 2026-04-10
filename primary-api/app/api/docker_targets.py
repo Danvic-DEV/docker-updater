@@ -20,7 +20,7 @@ def _require_ui_client(x_docker_updater_ui: str | None = Header(default=None)) -
 @router.get("/targets")
 def docker_targets(_: None = Depends(_require_local_request), __: None = Depends(_require_ui_client)) -> list[dict]:
     containers = list_running_containers()
-    store.sync_container_inventory(containers)
+    store.sync_container_inventory(agent_id="primary-local-agent", containers=containers)
     return [
         {
             "name": item["name"],

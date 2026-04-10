@@ -7,6 +7,8 @@ from app.models.api import (
     EnrollAgentRequest,
     EnrollAgentResponse,
     HeartbeatRequest,
+    AgentInventorySyncRequest,
+    AgentInventorySyncResponse,
     PullJobResponse,
     RegisterAgentRequest,
 )
@@ -92,4 +94,10 @@ def next_job(agent_id: str, _: str = Depends(_authenticate_agent)) -> PullJobRes
         return None
 
     return PullJobResponse(job_id=job.job_id, target_ref=job.target_ref, source_type=job.source_type)
+
+
+@router.post("/{agent_id}/inventory", response_model=AgentInventorySyncResponse)
+def sync_inventory(agent_id: str, payload: AgentInventorySyncRequest, _: str = Depends(_authenticate_agent)) -> AgentInventorySyncResponse:
+    store.sync_container_inventory(agent_id=agent_id, containers=[item.model_dump() for item in payload.containers])
+    return AgentInventorySyncResponse(synced=len(payload.containers))
 

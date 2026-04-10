@@ -5,6 +5,7 @@ from httpx import HTTPError
 
 from app.api_client import PrimaryApiClient
 from app.config import settings
+from app.docker_inspector import list_running_containers
 from app.executor import execute_update
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -41,6 +42,7 @@ def run() -> None:
         got_job = False
         try:
             api.heartbeat()
+            api.sync_inventory(list_running_containers())
             job = api.pull_next_job()
             if job:
                 got_job = True

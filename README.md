@@ -13,7 +13,7 @@ Pull and start the Primary container directly:
 docker run -d \
 	--name docker-updater \
 	--restart unless-stopped \
-	-p 8000:8000 \
+	-p 58000:58000 \
 	-p 5173:5173 \
 	-v primary_data:/config \
 	-v /var/run/docker.sock:/var/run/docker.sock \
@@ -33,7 +33,7 @@ Optional env vars:
 Then open:
 - Web UI: http://localhost:5173
 
-(Port 8000 is exposed for agents only. Port 8001 for admin API is not exposed.)
+(Port 58000 is exposed for agents only. Port 8001 for admin API is not exposed.)
 
 ## Quick Start (Fresh Install)
 
@@ -53,7 +53,7 @@ docker compose up --build
 - Web UI: http://localhost:5173
 
 **Port layout:**
-- 8000: Agent API (exposed for agent heartbeat + job updates)
+- 58000: Agent API (exposed for agent heartbeat + job updates)
 - 8001: Admin API (internal only, not exposed - used by UI)
 - 5173: Web UI (exposed)
 
@@ -87,7 +87,7 @@ Note: This endpoint is only available on port 8001, which is not exposed outside
 ```bash
 docker run -d \
 	--name docker-updater-agent \
-	-e PRIMARY_API_BASE_URL=http://<primary-host>:8000 \
+	-e PRIMARY_API_BASE_URL=http://<primary-host>:58000 \
 	-e AGENT_ID=<agent-id> \
 	-e AGENT_NAME=<agent-name> \
 	-e ENROLLMENT_CODE=<code-from-step-1> \
@@ -101,7 +101,7 @@ The agent auto-enrolls on startup, receives a per-agent token, and uses it for A
 
 The system uses a **dual-port security boundary** model:
 
-- **Port 8000 (Agent API)**: Exposed externally
+- **Port 58000 (Agent API)**: Exposed externally
   - Agent heartbeat, job polling, and progress updates
   - Authentication: Per-agent bearer tokens (issued after enrollment)
   - Used by: Remote agents only
@@ -119,7 +119,7 @@ The system uses a **dual-port security boundary** model:
   - In prod: Direct calls to `localhost:8001` (same container)
 
 **Security Model:**
-- External callers can only reach ports 8000 (agents) and 5173 (UI)
+- External callers can only reach ports 58000 (agents) and 5173 (UI)
 - Port 8001 is bound to localhost and inaccessible from outside the container
 - UI operations cannot be called directly from outside; only agents with valid per-agent tokens can access the API
 - Each agent gets a unique bearer token after enrollment; tokens are never shared
@@ -147,4 +147,4 @@ Workflows:
 - Container serves UI and APIs together
 - Browser runs inside container or as request from host
 - UI calls: `http://localhost:8001/api/...` directly (both in same container)
-- Agents from external networks call: `http://<container-host>:8000/api/...` with token auth
+- Agents from external networks call: `http://<container-host>:58000/api/...` with token auth

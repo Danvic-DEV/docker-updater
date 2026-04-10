@@ -9,7 +9,7 @@ from app.api.admin_docker import router as admin_docker_router
 from app.api.health import router as health_router
 from app.services.repositories import store
 
-# Agent API (port 8000) - exposed, requires per-agent token auth
+# Agent API (port 58000) - exposed, requires per-agent token auth
 agent_app = FastAPI(title="Docker Updater Agent API", version="0.1.0")
 
 @agent_app.on_event("startup")
@@ -43,5 +43,5 @@ admin_app.include_router(admin_agents_router)
 admin_app.include_router(admin_jobs_router)
 admin_app.include_router(admin_docker_router)
 
-# Default export for port 8000
+# Default export for port 58000
 app = agent_app

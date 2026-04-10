@@ -31,7 +31,7 @@ def create_bootstrap_command(
     enrollment_code, expires_at = store.create_enrollment_code(60)
 
     default_base_url = str(request.base_url).rstrip("/")
-    primary_base_url = payload.primary_api_base_url.strip() if payload.primary_api_base_url else default_base_url.replace(":8001", ":8000")
+    primary_base_url = payload.primary_api_base_url.strip() if payload.primary_api_base_url else default_base_url.replace(":8001", ":58000")
 
     command = (
         "docker run -d --name "

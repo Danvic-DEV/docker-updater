@@ -12,16 +12,16 @@ services:
       DATABASE_URL: postgresql+psycopg://docker_updater:docker_updater@127.0.0.1:5432/docker_updater
       AGENT_IMAGE: ghcr.io/danvic-dev/docker-updater-agent:latest
       PRIMARY_EMBEDDED_AGENT_ENABLE: "true"
-      VITE_API_BASE_URL: http://localhost:8000
+      VITE_API_BASE_URL: http://localhost:58000
     volumes:
       - primary_data:/config
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "5432:5432"
-      - "8000:8000"
+      - "58000:58000"
       - "5173:5173"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:58000/api/health')\""]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -33,7 +33,7 @@ services:
     environment:
       AGENT_ID: local-agent-1
       AGENT_NAME: local-agent-1
-      PRIMARY_API_BASE_URL: http://primary:8000
+      PRIMARY_API_BASE_URL: http://primary:58000
       ENROLLMENT_CODE: set-via-env-or-override
       POLL_INTERVAL_SECONDS: 5
     volumes:

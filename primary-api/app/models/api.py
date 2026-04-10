@@ -87,3 +87,20 @@ class PullJobResponse(BaseModel):
 class JobProgressRequest(BaseModel):
     status: JobStatus
     log_line: str | None = None
+
+
+class AgentInventoryItemRequest(BaseModel):
+    name: str
+    image: str
+    id: str
+    image_id: str
+    status: str
+    details: dict = Field(default_factory=dict)
+
+
+class AgentInventorySyncRequest(BaseModel):
+    containers: list[AgentInventoryItemRequest] = Field(default_factory=list)
+
+
+class AgentInventorySyncResponse(BaseModel):
+    synced: int

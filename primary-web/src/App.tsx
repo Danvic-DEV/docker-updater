@@ -57,7 +57,7 @@ export function App() {
       }
 
       if (!onboardingForm.primary_api_base_url) {
-        setOnboardingForm((current) => ({ ...current, primary_api_base_url: `${window.location.protocol}//${window.location.hostname}:8000` }));
+        setOnboardingForm((current) => ({ ...current, primary_api_base_url: `${window.location.protocol}//${window.location.hostname}:58000` }));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -92,8 +92,8 @@ export function App() {
   }
 
   function openUpdateModal(target: DockerTarget) {
-    const firstAgentId = agents.length > 0 ? agents[0].agent_id : "";
-    setUpdateModal({ target, agentId: firstAgentId });
+    const defaultAgentId = target.agent_id || (agents.length > 0 ? agents[0].agent_id : "");
+    setUpdateModal({ target, agentId: defaultAgentId });
   }
 
   async function onGenerateBootstrapCommand(event: FormEvent<HTMLFormElement>) {
@@ -173,7 +173,7 @@ export function App() {
                   name="primary_api_base_url"
                   value={onboardingForm.primary_api_base_url}
                   onChange={onOnboardingFieldChange}
-                  placeholder="http://192.168.1.10:8000"
+                  placeholder="http://192.168.1.10:58000"
                 />
               </label>
 
@@ -277,6 +277,7 @@ export function App() {
               <thead>
                 <tr>
                   <th>Name</th>
+                  <th>Agent</th>
                   <th>Image</th>
                   <th>Status</th>
                   <th></th>
@@ -285,7 +286,7 @@ export function App() {
               <tbody>
                 {targets.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="empty">
+                    <td colSpan={5} className="empty">
                       No running containers detected
                     </td>
                   </tr>
@@ -297,6 +298,7 @@ export function App() {
                         {target.has_update && <span className="update-badge">UPDATE</span>}
                       </td>
                       <td className="muted monospace">{target.image}</td>
+                      <td className="muted">{agentMap.get(target.agent_id ?? "") ?? target.agent_id ?? "-"}</td>
                       <td>
                         <Badge value={target.status} />
                       </td>

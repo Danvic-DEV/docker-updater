@@ -28,8 +28,8 @@ export DATABASE_URL="${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER}:${POS
 
 cd /workspace/primary-api
 
-# Agent API on port 8000 (exposed)
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+# Agent API on port 58000 (exposed)
+python -m uvicorn app.main:app --host 0.0.0.0 --port 58000 &
 AGENT_API_PID=$!
 
 # Admin API on port 8001 (not exposed)
@@ -37,7 +37,7 @@ python -m uvicorn app.main:admin_app --host 127.0.0.1 --port 8001 &
 ADMIN_API_PID=$!
 
 cd /workspace/primary-web
-export VITE_API_BASE_URL="${VITE_API_BASE_URL:-http://localhost:8000}"
+export VITE_API_BASE_URL="${VITE_API_BASE_URL:-http://localhost:58000}"
 npm run dev -- --host 0.0.0.0 --port 5173 &
 WEB_PID=$!
 
@@ -46,7 +46,7 @@ LOCAL_AGENT_PID=""
 if [[ "${PRIMARY_EMBEDDED_AGENT_ENABLE:-false}" == "true" ]]; then
   export AGENT_ID="${PRIMARY_EMBEDDED_AGENT_ID:-primary-local-agent}"
   export AGENT_NAME="${PRIMARY_EMBEDDED_AGENT_NAME:-Primary Local Agent}"
-  export PRIMARY_API_BASE_URL="${PRIMARY_EMBEDDED_AGENT_API_BASE_URL:-http://127.0.0.1:8000}"
+  export PRIMARY_API_BASE_URL="${PRIMARY_EMBEDDED_AGENT_API_BASE_URL:-http://127.0.0.1:58000}"
   export AGENT_TOKEN="${PRIMARY_EMBEDDED_AGENT_TOKEN:-}"
   export POLL_INTERVAL_SECONDS="${PRIMARY_EMBEDDED_AGENT_POLL_INTERVAL_SECONDS:-5}"
   

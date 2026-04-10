@@ -9,6 +9,7 @@ from psycopg.rows import dict_row
 
 from app.core.config import settings
 from app.models.domain import Agent, JobStatus, UpdateJob
+from app.services.docker_inspector import has_update_for_remote_image
 
 
 def _normalize_dsn(database_url: str) -> str:
@@ -94,6 +95,7 @@ class PostgresStore:
                     """
                     CREATE TABLE IF NOT EXISTS container_inventory (
                         container_name TEXT PRIMARY KEY,
+                        agent_id TEXT NOT NULL DEFAULT 'primary-local-agent',
                         container_id TEXT NOT NULL,
                         image_ref TEXT NOT NULL,
                         image_id TEXT NOT NULL,
@@ -113,6 +115,7 @@ class PostgresStore:
                     CREATE TABLE IF NOT EXISTS container_inventory_history (
                         id BIGSERIAL PRIMARY KEY,
                         container_name TEXT NOT NULL,
+                        agent_id TEXT NOT NULL DEFAULT 'primary-local-agent',
                         container_id TEXT NOT NULL,
                         image_ref TEXT NOT NULL,
                         image_id TEXT NOT NULL,
@@ -124,6 +127,8 @@ class PostgresStore:
                     )
                     """
                 )
+                cur.execute("ALTER TABLE container_inventory ADD COLUMN IF NOT EXISTS agent_id TEXT NOT NULL DEFAULT 'primary-local-agent'")
+                cur.execute("ALTER TABLE container_inventory_history ADD COLUMN IF NOT EXISTS agent_id TEXT NOT NULL DEFAULT 'primary-local-agent'")
 
     def _hash_secret(self, value: str) -> str:
         return hashlib.sha256(value.encode("utf-8")).hexdigest()
@@ -366,6 +371,7 @@ class PostgresStore:
             """
             INSERT INTO container_inventory_history (
                 container_name,
+                agent_id,
                 container_id,
                 image_ref,
                 image_id,
@@ -375,10 +381,11 @@ class PostgresStore:
                 recorded_at,
                 event_type
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
             """,
             (
                 item["name"],
+                item.get("agent_id", "primary-local-agent"),
                 item["id"],
                 item["image"],
                 item.get("image_id", ""),
@@ -390,18 +397,35 @@ class PostgresStore:
             ),
         )
 
-    def sync_container_inventory(self, containers: list[dict[str, Any]]) -> None:
+    def _inventory_key(self, agent_id: str, container_name: str) -> str:
+        return f"{agent_id}:{container_name}"
+
+    def sync_container_inventory(self, agent_id: str, containers: list[dict[str, Any]]) -> None:
         now = datetime.now(UTC)
-        seen_names = [str(item["name"]) for item in containers]
+        seen_names = [self._inventory_key(agent_id, str(item["name"])) for item in containers]
 
         with self._connect() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
                 for item in containers:
+                    raw_name = str(item["name"])
+                    storage_name = self._inventory_key(agent_id, raw_name)
+                    has_update = has_update_for_remote_image(str(item["image"]), str(item.get("image_id", "")))
+                    details = dict(item.get("details") or {})
+                    details["agent_container_name"] = raw_name
+
+                    stored_item = {
+                        **item,
+                        "name": storage_name,
+                        "has_update": has_update,
+                        "details": details,
+                        "agent_id": agent_id,
+                    }
+
                     cur.execute(
                         """
                         SELECT * FROM container_inventory WHERE container_name = %s
                         """,
-                        (item["name"],),
+                        (storage_name,),
                     )
                     existing = cur.fetchone()
 
@@ -410,6 +434,7 @@ class PostgresStore:
                             """
                             INSERT INTO container_inventory (
                                 container_name,
+                                agent_id,
                                 container_id,
                                 image_ref,
                                 image_id,
@@ -422,31 +447,32 @@ class PostgresStore:
                                 observation_count,
                                 is_active
                             )
-                            VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, 1, TRUE)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, 1, TRUE)
                             """,
                             (
-                                item["name"],
-                                item["id"],
-                                item["image"],
-                                item.get("image_id", ""),
-                                item["status"],
-                                bool(item.get("has_update", False)),
-                                psycopg.types.json.Jsonb(item.get("details") or {}),
+                                stored_item["name"],
+                                agent_id,
+                                stored_item["id"],
+                                stored_item["image"],
+                                stored_item.get("image_id", ""),
+                                stored_item["status"],
+                                bool(stored_item.get("has_update", False)),
+                                psycopg.types.json.Jsonb(stored_item.get("details") or {}),
                                 now,
                                 now,
                                 now,
                             ),
                         )
-                        self._append_inventory_history(cur, item, "discovered", now)
+                        self._append_inventory_history(cur, stored_item, "discovered", now)
                         continue
 
-                    details_now = item.get("details") or {}
+                    details_now = stored_item.get("details") or {}
                     changed = (
-                        existing["container_id"] != item["id"]
-                        or existing["image_ref"] != item["image"]
-                        or existing["image_id"] != item.get("image_id", "")
-                        or existing["status"] != item["status"]
-                        or bool(existing["has_update"]) != bool(item.get("has_update", False))
+                        existing["container_id"] != stored_item["id"]
+                        or existing["image_ref"] != stored_item["image"]
+                        or existing["image_id"] != stored_item.get("image_id", "")
+                        or existing["status"] != stored_item["status"]
+                        or bool(existing["has_update"]) != bool(stored_item.get("has_update", False))
                         or (existing.get("details") or {}) != details_now
                         or not bool(existing["is_active"])
                     )
@@ -455,6 +481,7 @@ class PostgresStore:
                         """
                         UPDATE container_inventory
                         SET
+                            agent_id = %s,
                             container_id = %s,
                             image_ref = %s,
                             image_id = %s,
@@ -468,39 +495,42 @@ class PostgresStore:
                         WHERE container_name = %s
                         """,
                         (
-                            item["id"],
-                            item["image"],
-                            item.get("image_id", ""),
-                            item["status"],
-                            bool(item.get("has_update", False)),
+                            agent_id,
+                            stored_item["id"],
+                            stored_item["image"],
+                            stored_item.get("image_id", ""),
+                            stored_item["status"],
+                            bool(stored_item.get("has_update", False)),
                             psycopg.types.json.Jsonb(details_now),
                             now,
                             changed,
                             now,
-                            item["name"],
+                            stored_item["name"],
                         ),
                     )
 
                     if changed:
-                        self._append_inventory_history(cur, item, "changed", now)
+                        self._append_inventory_history(cur, stored_item, "changed", now)
 
                 # Mark previously seen containers as missing when they disappear from current discovery.
                 if seen_names:
                     cur.execute(
                         """
                         SELECT * FROM container_inventory
-                        WHERE is_active = TRUE
+                                                WHERE is_active = TRUE
+                                                    AND agent_id = %s
                           AND NOT (container_name = ANY(%s))
                         """,
-                        (seen_names,),
+                                                (agent_id, seen_names),
                     )
                 else:
-                    cur.execute("SELECT * FROM container_inventory WHERE is_active = TRUE")
+                                        cur.execute("SELECT * FROM container_inventory WHERE is_active = TRUE AND agent_id = %s", (agent_id,))
 
                 missing_rows = cur.fetchall()
                 for row in missing_rows:
                     snapshot = {
                         "name": row["container_name"],
+                        "agent_id": row.get("agent_id", agent_id),
                         "id": row["container_id"],
                         "image": row["image_ref"],
                         "image_id": row["image_id"],
@@ -515,19 +545,21 @@ class PostgresStore:
                         """
                         UPDATE container_inventory
                         SET is_active = FALSE, last_changed = %s
-                        WHERE is_active = TRUE
+                                                WHERE is_active = TRUE
+                                                    AND agent_id = %s
                           AND NOT (container_name = ANY(%s))
                         """,
-                        (now, seen_names),
+                                                (now, agent_id, seen_names),
                     )
                 else:
                     cur.execute(
                         """
                         UPDATE container_inventory
                         SET is_active = FALSE, last_changed = %s
-                        WHERE is_active = TRUE
+                                                WHERE is_active = TRUE
+                                                    AND agent_id = %s
                         """,
-                        (now,),
+                                                (now, agent_id),
                     )
 
     def list_container_inventory(self, include_inactive: bool = True) -> list[dict[str, Any]]:
@@ -550,7 +582,18 @@ class PostgresStore:
                         ORDER BY has_update DESC, container_name ASC
                         """
                     )
-                return [dict(row) for row in cur.fetchall()]
+                result: list[dict[str, Any]] = []
+                for row in cur.fetchall():
+                    item = dict(row)
+                    details = item.get("details") or {}
+                    display_name = details.get("agent_container_name") or item.get("container_name")
+                    item["name"] = display_name
+                    item["image"] = item.get("image_ref")
+                    item["id"] = item.get("container_id")
+                    item["agent_id"] = item.get("agent_id", "primary-local-agent")
+                    result.append(item)
+                return result
+                
 
     def list_container_inventory_history(self, limit: int = 500) -> list[dict[str, Any]]:
         with self._connect() as conn:

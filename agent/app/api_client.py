@@ -67,3 +67,10 @@ class PrimaryApiClient:
             json={"status": status, "log_line": log_line},
             headers=self._headers,
         ).raise_for_status()
+
+    def sync_inventory(self, containers: list[dict[str, Any]]) -> None:
+        self._client.post(
+            f"/api/agents/{settings.agent_id}/inventory",
+            json={"containers": containers},
+            headers=self._headers,
+        ).raise_for_status()

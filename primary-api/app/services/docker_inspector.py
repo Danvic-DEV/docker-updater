@@ -32,6 +32,27 @@ def _has_update_available(client: DockerClient, image_name: str) -> bool:
         return False
 
 
+def has_update_for_remote_image(image_name: str, local_image_id: str) -> bool:
+    """Check update availability for an image running on an agent host.
+
+    This compares the agent-reported local image id with the current registry id.
+    """
+    try:
+        client = DockerClient(base_url="unix://var/run/docker.sock")
+        try:
+            registry_data = client.images.get_registry_data(image_name)
+        except Exception:
+            return False
+
+        registry_id = (getattr(registry_data, "id", "") or "").replace("sha256:", "")
+        local_id = (local_image_id or "").replace("sha256:", "")
+        if not registry_id or not local_id:
+            return False
+        return registry_id != local_id
+    except DockerException:
+        return False
+
+
 def list_running_containers() -> list[dict[str, Any]]:
     try:
         client = DockerClient(base_url="unix://var/run/docker.sock")
