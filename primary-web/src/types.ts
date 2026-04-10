@@ -22,3 +22,9 @@ export type DockerTarget = {
   image: string;
   status: string;
 };
+
+export type AgentBootstrapCommandResponse = {
+  enrollment_code: string;
+  expires_at: string;
+  command: string;
+};

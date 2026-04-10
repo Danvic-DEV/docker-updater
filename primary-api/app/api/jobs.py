@@ -24,10 +24,6 @@ def _authenticate_agent_token(authorization: str | None = Header(default=None)) 
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
 
-    # Backward compatibility for existing shared-token setups.
-    if settings.agent_shared_token and token == settings.agent_shared_token:
-        return None
-
     agent_id = store.get_agent_id_for_token(token)
     if not agent_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
@@ -82,12 +78,12 @@ def get_job(job_id: str) -> JobResponse:
 
 
 @router.post("/{job_id}/progress", response_model=JobResponse)
-def update_progress(job_id: str, payload: JobProgressRequest, authenticated_agent_id: str | None = Depends(_authenticate_agent_token)) -> JobResponse:
+def update_progress(job_id: str, payload: JobProgressRequest, authenticated_agent_id: str = Depends(_authenticate_agent_token)) -> JobResponse:
     existing = store.get_job(job_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    if authenticated_agent_id is not None and existing.target_agent_id != authenticated_agent_id:
+    if existing.target_agent_id != authenticated_agent_id:
         raise HTTPException(status_code=403, detail="Agent cannot update this job")
 
     job = store.update_job_status(job_id, status=payload.status, log_line=payload.log_line)

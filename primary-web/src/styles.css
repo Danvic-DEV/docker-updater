@@ -53,6 +53,14 @@ body {
   gap: 12px;
 }
 
+.two-col {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.span-2 {
+  grid-column: span 2;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -190,6 +198,22 @@ button:disabled {
   margin-bottom: 12px;
 }
 
+.command-box {
+  margin-top: 12px;
+  border: 1px solid #d9e0eb;
+  background: #f8fbff;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.command-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 pre {
   background: #0f172a;
   color: #d4f5ff;
@@ -204,6 +228,14 @@ pre {
   }
 
   .card.wide {
+    grid-column: span 1;
+  }
+
+  .two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .span-2 {
     grid-column: span 1;
   }
 }

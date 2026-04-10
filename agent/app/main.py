@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 def run() -> None:
     api = PrimaryApiClient()
 
-    if not settings.agent_token and not settings.agent_shared_token:
+    if not settings.agent_token:
         while True:
             try:
                 api.enroll()

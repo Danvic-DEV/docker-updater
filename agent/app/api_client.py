@@ -8,7 +8,7 @@ from app.config import settings
 class PrimaryApiClient:
     def __init__(self) -> None:
         self._client = httpx.Client(base_url=settings.primary_api_base_url, timeout=10.0)
-        self._agent_token: str | None = settings.agent_token or settings.agent_shared_token
+        self._agent_token: str | None = settings.agent_token
 
     @property
     def _headers(self) -> dict[str, str]:

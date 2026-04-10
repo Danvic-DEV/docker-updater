@@ -1,10 +1,13 @@
 from datetime import UTC, datetime
+import shlex
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from app.core.config import settings
 from app.models.api import (
     AgentResponse,
+    AgentBootstrapCommandRequest,
+    AgentBootstrapCommandResponse,
     CreateEnrollmentCodeRequest,
     EnrollmentCodeResponse,
     EnrollAgentRequest,
@@ -39,10 +42,6 @@ def _authenticate_agent(agent_id: str, authorization: str | None = Header(defaul
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
 
-    # Backward compatibility for existing shared-token setups.
-    if settings.agent_shared_token and token == settings.agent_shared_token:
-        return agent_id
-
     authenticated_agent_id = store.get_agent_id_for_token(token)
     if authenticated_agent_id != agent_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
@@ -55,6 +54,36 @@ def _authenticate_agent(agent_id: str, authorization: str | None = Header(defaul
 def create_enrollment_code(payload: CreateEnrollmentCodeRequest) -> EnrollmentCodeResponse:
     enrollment_code, expires_at = store.create_enrollment_code(payload.ttl_minutes)
     return EnrollmentCodeResponse(enrollment_code=enrollment_code, expires_at=expires_at.isoformat())
+
+
+@router.post("/bootstrap-command", response_model=AgentBootstrapCommandResponse, dependencies=[Depends(_check_admin_token)])
+def create_bootstrap_command(payload: AgentBootstrapCommandRequest, request: Request) -> AgentBootstrapCommandResponse:
+    enrollment_code, expires_at = store.create_enrollment_code(60)
+
+    default_base_url = str(request.base_url).rstrip("/")
+    primary_base_url = payload.primary_api_base_url.strip() if payload.primary_api_base_url else default_base_url
+
+    command = (
+        "docker run -d --name "
+        + shlex.quote(f"docker-updater-agent-{payload.agent_id}")
+        + " --restart unless-stopped"
+        + " -e PRIMARY_API_BASE_URL="
+        + shlex.quote(primary_base_url)
+        + " -e AGENT_ID="
+        + shlex.quote(payload.agent_id)
+        + " -e AGENT_NAME="
+        + shlex.quote(payload.agent_name)
+        + " -e ENROLLMENT_CODE="
+        + shlex.quote(enrollment_code)
+        + " -v /var/run/docker.sock:/var/run/docker.sock "
+        + shlex.quote(payload.agent_image.strip() if payload.agent_image else settings.agent_image)
+    )
+
+    return AgentBootstrapCommandResponse(
+        enrollment_code=enrollment_code,
+        expires_at=expires_at.isoformat(),
+        command=command,
+    )
 
 
 @router.post("/enroll", response_model=EnrollAgentResponse)

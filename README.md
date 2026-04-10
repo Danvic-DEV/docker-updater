@@ -5,15 +5,21 @@ Monorepo for a Docker update orchestration system with:
 - Primary web UI: React + Vite
 - Remote agent: Python polling worker
 
-## Quick Start
+## Quick Start (Fresh Install)
 
-1. Start local stack:
+1. Reset old local state (optional but recommended for clean-break auth):
+
+```bash
+docker compose down -v
+```
+
+2. Start local stack:
 
 ```bash
 docker compose up --build
 ```
 
-2. Open:
+3. Open:
 - API docs: http://localhost:8000/docs
 - Web UI: http://localhost:5173
 
@@ -58,9 +64,9 @@ The agent auto-enrolls on startup, receives a per-agent token, and uses it for A
 
 ### Auth notes
 
-- New recommended auth: per-agent tokens from enrollment.
-- Backward compatibility: shared token (`AGENT_SHARED_TOKEN`) is still accepted if configured.
-- Admin operations (creating enrollment codes) require `ADMIN_API_TOKEN`.
+- Agent auth is per-agent token only (issued during enrollment).
+- Enrollment codes are one-time use and time-limited.
+- Admin operations (creating enrollment codes / bootstrap commands) require `ADMIN_API_TOKEN`.
 
 ## GHCR Auto Build
 

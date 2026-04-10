@@ -37,6 +37,19 @@ class EnrollmentCodeResponse(BaseModel):
     expires_at: str
 
 
+class AgentBootstrapCommandRequest(BaseModel):
+    agent_id: str
+    agent_name: str
+    primary_api_base_url: str | None = None
+    agent_image: str | None = None
+
+
+class AgentBootstrapCommandResponse(BaseModel):
+    enrollment_code: str
+    expires_at: str
+    command: str
+
+
 class HeartbeatRequest(BaseModel):
     status: AgentStatus = "online"
 
