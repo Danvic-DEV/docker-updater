@@ -43,7 +43,7 @@ WEB_PID=$!
 
 cd /workspace/agent
 LOCAL_AGENT_PID=""
-if [[ "${PRIMARY_EMBEDDED_AGENT_ENABLE:-false}" == "true" ]]; then
+if [[ "${PRIMARY_EMBEDDED_AGENT_ENABLE:-true}" == "true" ]]; then
   export AGENT_ID="${PRIMARY_EMBEDDED_AGENT_ID:-primary-local-agent}"
   export AGENT_NAME="${PRIMARY_EMBEDDED_AGENT_NAME:-Primary Local Agent}"
   export PRIMARY_API_BASE_URL="${PRIMARY_EMBEDDED_AGENT_API_BASE_URL:-http://127.0.0.1:58000}"
