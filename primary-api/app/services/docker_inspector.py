@@ -1,7 +1,11 @@
+import logging
 from typing import Any
 
 from docker import DockerClient
 from docker.errors import DockerException
+
+
+log = logging.getLogger(__name__)
 
 
 def _has_update_available(client: DockerClient, image_name: str) -> bool:
@@ -37,20 +41,37 @@ def has_update_for_remote_image(image_name: str, local_image_id: str) -> bool:
 
     This compares the agent-reported local image id with the current registry id.
     """
+    has_update, _status, _error = check_update_for_remote_image(image_name, local_image_id)
+    return has_update
+
+
+def check_update_for_remote_image(image_name: str, local_image_id: str) -> tuple[bool, str, str | None]:
+    """Return (has_update, status, error) for remote image update checks.
+
+    Status values: available, up_to_date, unknown.
+    """
     try:
         client = DockerClient(base_url="unix://var/run/docker.sock")
         try:
             registry_data = client.images.get_registry_data(image_name)
-        except Exception:
-            return False
+        except Exception as exc:
+            error = f"registry lookup failed for {image_name}: {exc}"
+            log.warning(error)
+            return False, "unknown", error
 
         registry_id = (getattr(registry_data, "id", "") or "").replace("sha256:", "")
         local_id = (local_image_id or "").replace("sha256:", "")
         if not registry_id or not local_id:
-            return False
-        return registry_id != local_id
-    except DockerException:
-        return False
+            error = f"missing digest for {image_name} (registry_id={bool(registry_id)}, local_id={bool(local_id)})"
+            log.warning(error)
+            return False, "unknown", error
+
+        has_update = registry_id != local_id
+        return has_update, "available" if has_update else "up_to_date", None
+    except DockerException as exc:
+        error = f"docker error while checking updates for {image_name}: {exc}"
+        log.warning(error)
+        return False, "unknown", error
 
 
 def list_running_containers() -> list[dict[str, Any]]:

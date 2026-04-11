@@ -7,7 +7,7 @@ from psycopg.rows import dict_row
 
 from app.core.config import settings
 from app.models.domain import Agent, JobStatus, UpdateJob
-from app.services.docker_inspector import has_update_for_remote_image
+from app.services.docker_inspector import check_update_for_remote_image
 
 
 def _normalize_dsn(database_url: str) -> str:
@@ -308,9 +308,14 @@ class PostgresStore:
                 for item in containers:
                     raw_name = str(item["name"])
                     storage_name = self._inventory_key(agent_id, raw_name)
-                    has_update = has_update_for_remote_image(str(item["image"]), str(item.get("image_id", "")))
+                    has_update, update_check_status, update_check_error = check_update_for_remote_image(
+                        str(item["image"]),
+                        str(item.get("image_id", "")),
+                    )
                     details = dict(item.get("details") or {})
                     details["agent_container_name"] = raw_name
+                    details["update_check_status"] = update_check_status
+                    details["update_check_error"] = update_check_error
 
                     stored_item = {
                         **item,
@@ -490,6 +495,10 @@ class PostgresStore:
                     item["image"] = item.get("image_ref")
                     item["id"] = item.get("container_id")
                     item["agent_id"] = item.get("agent_id", "primary-local-agent")
+                    item["update_check_status"] = details.get("update_check_status") or (
+                        "available" if item.get("has_update") else "up_to_date"
+                    )
+                    item["update_check_error"] = details.get("update_check_error")
                     result.append(item)
                 return result
                 

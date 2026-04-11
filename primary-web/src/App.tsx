@@ -204,6 +204,9 @@ export function App() {
                       <td>
                         <strong>{target.name}</strong>
                         {target.has_update && <span className="update-badge">UPDATE</span>}
+                        {!target.has_update && target.update_check_status === "unknown" && (
+                          <span className="update-badge update-badge-unknown">UNKNOWN</span>
+                        )}
                       </td>
                       <td className="muted monospace">{target.image}</td>
                       <td className="muted">{agentMap.get(target.agent_id ?? "") ?? target.agent_id ?? "-"}</td>
@@ -214,7 +217,13 @@ export function App() {
                         <button 
                           className={`action-btn ${target.has_update ? 'has-update' : ''}`}
                           onClick={() => openUpdateModal(target)} 
-                          title={target.has_update ? "Update available - click to update" : "Pull latest image"}
+                          title={
+                            target.has_update
+                              ? "Update available - click to update"
+                              : target.update_check_status === "unknown"
+                                ? `Registry check unknown${target.update_check_error ? `: ${target.update_check_error}` : ""}. You can still force a pull.`
+                                : "Pull latest image"
+                          }
                         >
                           ↗
                         </button>

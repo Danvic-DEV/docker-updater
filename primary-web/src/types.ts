@@ -23,5 +23,7 @@ export type DockerTarget = {
   image: string;
   status: string;
   has_update: boolean;
+  update_check_status?: "available" | "up_to_date" | "unknown";
+  update_check_error?: string | null;
   agent_id?: string;
 };
