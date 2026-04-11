@@ -1,7 +1,7 @@
 import logging
 import time
 
-from httpx import HTTPError
+from httpx import HTTPError, HTTPStatusError
 
 from app.api_client import PrimaryApiClient
 from app.config import settings
@@ -40,6 +40,19 @@ def run() -> None:
                     api.report_progress(job_id=job_id, status="in_progress", log_line=line)
                 final_status = "completed" if success else "failed"
                 api.report_progress(job_id=job_id, status=final_status, log_line=f"Job finished: {final_status}")
+        except HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                log.warning("Agent missing on primary; re-registering")
+                while True:
+                    try:
+                        api.register()
+                        log.info("Re-registered with primary")
+                        break
+                    except HTTPError as reg_exc:
+                        log.warning("Re-registration failed (%s), retrying in 5s", reg_exc)
+                        time.sleep(5)
+            else:
+                log.warning("Transient API error: %s", exc)
         except HTTPError as exc:
             log.warning("Transient API error: %s", exc)
 
