@@ -15,19 +15,6 @@ log = logging.getLogger(__name__)
 def run() -> None:
     api = PrimaryApiClient()
 
-    if not settings.agent_token:
-        while True:
-            try:
-                api.enroll()
-                log.info("Enrolled with primary")
-                break
-            except HTTPError as exc:
-                log.warning("Enrollment failed (%s), retrying in 5s", exc)
-                time.sleep(5)
-            except RuntimeError as exc:
-                log.error("Enrollment configuration error: %s", exc)
-                raise
-
     # Registration with retry so the agent survives a slow primary startup
     while True:
         try:

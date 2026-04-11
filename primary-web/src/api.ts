@@ -1,4 +1,4 @@
-import type { Agent, AgentBootstrapCommandResponse, DockerTarget, Job } from "./types";
+import type { Agent, DockerTarget, Job } from "./types";
 
 // In development: the browser proxies through Vite (localhost:5173/admin-api -> localhost:8001)
 // In production: the browser can reach localhost:8001 directly (same container)
@@ -32,21 +32,6 @@ export async function createJob(input: {
 }): Promise<Job> {
   return parseJson<Job>(
     await fetch(`${ADMIN_API_BASE_URL}/api/jobs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    })
-  );
-}
-
-export async function createAgentBootstrapCommand(input: {
-  agent_id: string;
-  agent_name: string;
-  primary_api_base_url?: string;
-  agent_image?: string;
-}): Promise<AgentBootstrapCommandResponse> {
-  return parseJson<AgentBootstrapCommandResponse>(
-    await fetch(`${ADMIN_API_BASE_URL}/api/agents/bootstrap-command`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),

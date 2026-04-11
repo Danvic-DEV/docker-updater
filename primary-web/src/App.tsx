@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ChangeEvent, FormEvent } from "react";
+import type { FormEvent } from "react";
 
-import { createAgentBootstrapCommand, createJob, fetchAgents, fetchDockerTargets, fetchJobs } from "./api";
+import { createJob, fetchAgents, fetchDockerTargets, fetchJobs } from "./api";
 import type { Agent, DockerTarget, Job } from "./types";
 
 const STATUS_CLASS: Record<string, string> = {
@@ -22,28 +22,15 @@ function formatTime(iso: string) {
 }
 
 export function App() {
-  const [page, setPage] = useState<'home' | 'settings'>('home');
   const [agents, setAgents] = useState<Agent[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [targets, setTargets] = useState<DockerTarget[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [bootstrap, setBootstrap] = useState<{ command: string; expires_at: string } | null>(null);
-  const [copied, setCopied] = useState(false);
   const [updateModal, setUpdateModal] = useState<{ target: DockerTarget; agentId: string } | null>(null);
-  const [onboardingForm, setOnboardingForm] = useState<{ agent_id: string; agent_name: string; primary_api_base_url: string; agent_image: string }>({
-    agent_id: "",
-    agent_name: "",
-    primary_api_base_url: "",
-    agent_image: "ghcr.io/danvic-dev/docker-updater-agent:latest",
-  });
 
   const agentMap = useMemo(() => new Map(agents.map((a) => [a.agent_id, a.name])), [agents]);
-  const canGenerateBootstrap = useMemo(
-    () => onboardingForm.agent_id.trim() && onboardingForm.agent_name.trim(),
-    [onboardingForm]
-  );
   const sortedJobs = useMemo(() => [...jobs].sort((a, b) => b.created_at.localeCompare(a.created_at)), [jobs]);
 
   async function refresh(showIndicator = false) {
@@ -61,16 +48,6 @@ export function App() {
       if (updateModal && !updateModal.agentId && nextAgents[0]) {
         setUpdateModal((current) => ({ ...current!, agentId: nextAgents[0].agent_id }));
       }
-
-      setOnboardingForm((current) => {
-        if (current.primary_api_base_url) {
-          return current;
-        }
-        return {
-          ...current,
-          primary_api_base_url: `${window.location.protocol}//${window.location.hostname}:58000`,
-        };
-      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -104,59 +81,9 @@ export function App() {
     return () => window.clearInterval(id);
   }, []);
 
-  function onOnboardingFieldChange(event: ChangeEvent<HTMLInputElement>) {
-    setOnboardingForm((curr) => ({ ...curr, [event.target.name]: event.target.value }));
-  }
-
   function openUpdateModal(target: DockerTarget) {
     const defaultAgentId = target.agent_id || (agents.length > 0 ? agents[0].agent_id : "");
     setUpdateModal({ target, agentId: defaultAgentId });
-  }
-
-  async function onGenerateBootstrapCommand(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!canGenerateBootstrap) return;
-
-    try {
-      const response = await createAgentBootstrapCommand({
-        agent_id: onboardingForm.agent_id.trim(),
-        agent_name: onboardingForm.agent_name.trim(),
-        primary_api_base_url: onboardingForm.primary_api_base_url.trim() || undefined,
-        agent_image: onboardingForm.agent_image.trim() || undefined,
-      });
-      setBootstrap({ command: response.command, expires_at: response.expires_at });
-      setCopied(false);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to generate command");
-    }
-  }
-
-  async function copyCommand() {
-    if (!bootstrap) return;
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(bootstrap.command);
-      } else {
-        const textarea = document.createElement("textarea");
-        textarea.value = bootstrap.command;
-        textarea.setAttribute("readonly", "");
-        textarea.style.position = "fixed";
-        textarea.style.left = "-9999px";
-        document.body.appendChild(textarea);
-        textarea.select();
-        const copiedOk = document.execCommand("copy");
-        document.body.removeChild(textarea);
-        if (!copiedOk) {
-          throw new Error("Copy failed");
-        }
-      }
-      setCopied(true);
-      setError(null);
-    } catch {
-      setCopied(false);
-      setError("Unable to copy automatically. Please copy the command manually.");
-    }
   }
 
   const agentsOnline = agents.filter((a) => a.status === "online").length;
@@ -168,91 +95,21 @@ export function App() {
   return (
     <main className="layout">
       <header className="header">
-        <h1 style={{ cursor: 'pointer' }} onClick={() => setPage('home')}>Docker Updater</h1>
+        <h1>Docker Updater</h1>
         <div className="header-actions">
           <button onClick={() => refresh(true)} title="Refresh" disabled={isRefreshing}>
-            {page === 'home' ? (isRefreshing ? '…' : '↻') : ''}
-          </button>
-          <button onClick={() => setPage(page === 'home' ? 'settings' : 'home')} title={page === 'home' ? 'Settings' : 'Home'}>
-            {page === 'home' ? '⚙' : '⌂'}
+            {isRefreshing ? '…' : '↻'}
           </button>
         </div>
       </header>
 
-      {page === 'home' && (
-        <section className="muted" style={{ marginTop: "-0.5rem", marginBottom: "0.5rem" }}>
-          Last updated: {lastUpdatedAt ?? "pending..."}
-        </section>
-      )}
+      <section className="muted" style={{ marginTop: "-0.5rem", marginBottom: "0.5rem" }}>
+        Last updated: {lastUpdatedAt ?? "pending..."}
+      </section>
 
       {error ? <section className="error">{error}</section> : null}
 
-      {page === 'settings' && (
-        <section className="settings-page">
-          <article className="card onboarding">
-            <h2>Add Agent</h2>
-            <p className="muted">Generate install command for new agent.</p>
-            <form onSubmit={onGenerateBootstrapCommand} className="form">
-              <label>
-                Agent ID
-                <input
-                  name="agent_id"
-                  value={onboardingForm.agent_id}
-                  onChange={onOnboardingFieldChange}
-                  placeholder="living-room-nas"
-                />
-              </label>
-
-              <label>
-                Agent Name
-                <input
-                  name="agent_name"
-                  value={onboardingForm.agent_name}
-                  onChange={onOnboardingFieldChange}
-                  placeholder="Living Room NAS"
-                />
-              </label>
-
-              <label>
-                Primary API URL
-                <input
-                  name="primary_api_base_url"
-                  value={onboardingForm.primary_api_base_url}
-                  onChange={onOnboardingFieldChange}
-                  placeholder="http://192.168.1.10:58000"
-                />
-              </label>
-
-              <label>
-                Agent Image
-                <input
-                  name="agent_image"
-                  value={onboardingForm.agent_image}
-                  onChange={onOnboardingFieldChange}
-                  placeholder="ghcr.io/danvic-dev/docker-updater-agent:latest"
-                />
-              </label>
-
-              <button type="submit" disabled={!canGenerateBootstrap}>
-                Generate Command
-              </button>
-            </form>
-
-            {bootstrap ? (
-              <div className="command-box">
-                <div className="command-header">
-                  <small className="muted">Expires: {formatTime(bootstrap.expires_at)}</small>
-                  <button type="button" onClick={copyCommand}>{copied ? '✓ Copied' : 'Copy'}</button>
-                </div>
-                <pre>{bootstrap.command}</pre>
-              </div>
-            ) : null}
-          </article>
-        </section>
-      )}
-
-      {page === 'home' && (
-        <>
+      <>
       {/* Dashboard Stats */}
       <section className="dashboard-stats">
         <div className="stat-card">
@@ -434,8 +291,7 @@ export function App() {
           </div>
         </div>
       )}
-        </>
-      )}
+      </>
     </main>
   );
 }

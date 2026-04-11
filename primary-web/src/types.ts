@@ -25,9 +25,3 @@ export type DockerTarget = {
   has_update: boolean;
   agent_id?: string;
 };
-
-export type AgentBootstrapCommandResponse = {
-  enrollment_code: string;
-  expires_at: string;
-  command: string;
-};

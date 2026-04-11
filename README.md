@@ -23,7 +23,7 @@ docker run -d \
 Optional env vars:
 
 ```bash
-# Override the agent image used in generated bootstrap commands
+# Override the remote agent image reference
 -e AGENT_IMAGE=ghcr.io/danvic-dev/docker-updater-agent:latest
 
 # Enable/disable the embedded agent inside primary
@@ -41,7 +41,7 @@ Then open:
 
 ## Quick Start (Fresh Install)
 
-1. Reset old local state (optional but recommended for clean-break auth):
+1. Reset old local state (optional but recommended):
 
 ```bash
 docker compose down -v
@@ -65,28 +65,16 @@ docker compose up --build
 
 Implemented MVP with:
 - PostgreSQL-backed agents and job queue
-- Agent enrollment flow with per-agent credentials
+- Agent registration and polling flow
 - Agent polling, job execution, and progress reporting
 - Container image pull + container replacement execution
 - Dashboard for agents, targets, and job logs
 
-## Stateless Agent Enrollment (No Persistent Agent Storage)
+## Stateless Agent Startup (No Persistent Agent Storage)
 
 The agent can run without persistent local storage. It only needs env vars and `/var/run/docker.sock` mounted.
 
-### 1) Create an enrollment code from UI
-
-In the web UI (http://localhost:5173), go to Settings and create an enrollment code. Or use the admin API (internal only):
-
-```bash
-curl -X POST http://localhost:8001/api/agents/enrollment-codes \
-	-H 'Content-Type: application/json' \
-	-d '{"ttl_minutes":60}'
-```
-
-Note: This endpoint is only available on port 8001, which is not exposed outside the container. The web UI is the primary interface for creating enrollment codes.
-
-### 2) Start agent with env vars only
+### Start agent with env vars only
 
 ```bash
 docker run -d \
@@ -94,24 +82,22 @@ docker run -d \
 	-e PRIMARY_API_BASE_URL=http://<primary-host>:58000 \
 	-e AGENT_ID=<agent-id> \
 	-e AGENT_NAME=<agent-name> \
-	-e ENROLLMENT_CODE=<code-from-step-1> \
 	-v /var/run/docker.sock:/var/run/docker.sock \
 	ghcr.io/danvic-dev/docker-updater-agent:latest
 ```
 
-The agent auto-enrolls on startup, receives a per-agent token, and uses it for API auth during that run.
+The agent registers on startup and begins heartbeat/job polling automatically.
 
 ### Architecture
 
-The system uses a **dual-port security boundary** model:
+The system uses a **dual-port network boundary** model:
 
 - **Port 58000 (Agent API)**: Exposed externally
   - Agent heartbeat, job polling, and progress updates
-  - Authentication: Per-agent bearer tokens (issued after enrollment)
+	- Authentication: None in this deployment mode
   - Used by: Remote agents only
 
 - **Port 8001 (Admin API)**: Internal only, not exposed
-  - Enrollment code generation and bootstrap command generation
   - Job creation and management
   - Container inventory queries
   - Authentication: None (internal only)
@@ -125,8 +111,7 @@ The system uses a **dual-port security boundary** model:
 **Security Model:**
 - External callers can only reach ports 58000 (agents) and 5173 (UI)
 - Port 8001 is bound to localhost and inaccessible from outside the container
-- UI operations cannot be called directly from outside; only agents with valid per-agent tokens can access the API
-- Each agent gets a unique bearer token after enrollment; tokens are never shared
+- Agent endpoints are open in this deployment mode (no token/enrollment-code requirement)
 
 ## GHCR Auto Build
 
@@ -151,4 +136,4 @@ Workflows:
 - Container serves UI and APIs together
 - Browser runs inside container or as request from host
 - UI calls: `http://localhost:8001/api/...` directly (both in same container)
-- Agents from external networks call: `http://<container-host>:58000/api/...` with token auth
+- Agents from external networks call: `http://<container-host>:58000/api/...`

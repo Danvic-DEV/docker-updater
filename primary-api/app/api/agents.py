@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
 from app.models.api import (
     AgentResponse,
@@ -18,33 +18,8 @@ from app.services.repositories import store
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 
-def _extract_bearer(authorization: str | None) -> str | None:
-    if not authorization:
-        return None
-    prefix = "Bearer "
-    if not authorization.startswith(prefix):
-        return None
-    return authorization[len(prefix):]
-
-
-def _authenticate_agent(agent_id: str, authorization: str | None = Header(default=None)) -> str:
-    token = _extract_bearer(authorization)
-    if not token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
-
-    authenticated_agent_id = store.get_agent_id_for_token(token)
-    if authenticated_agent_id != agent_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
-
-    store.touch_agent_token(token)
-    return authenticated_agent_id
-
-
 @router.post("/enroll", response_model=EnrollAgentResponse)
 def enroll_agent(payload: EnrollAgentRequest) -> EnrollAgentResponse:
-    if not store.consume_enrollment_code(payload.enrollment_code):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid enrollment code")
-
     agent = store.upsert_agent(Agent(agent_id=payload.agent_id, name=payload.name, capabilities=payload.capabilities))
     agent_token = store.issue_agent_token(agent.agent_id)
 
@@ -58,8 +33,7 @@ def enroll_agent(payload: EnrollAgentRequest) -> EnrollAgentResponse:
 
 
 @router.post("/register", response_model=AgentResponse)
-def register_agent(payload: RegisterAgentRequest, authorization: str | None = Header(default=None)) -> AgentResponse:
-    _authenticate_agent(payload.agent_id, authorization)
+def register_agent(payload: RegisterAgentRequest) -> AgentResponse:
     agent = store.upsert_agent(Agent(agent_id=payload.agent_id, name=payload.name, capabilities=payload.capabilities))
     return AgentResponse(
         agent_id=agent.agent_id,
@@ -70,7 +44,7 @@ def register_agent(payload: RegisterAgentRequest, authorization: str | None = He
 
 
 @router.post("/{agent_id}/heartbeat", response_model=AgentResponse)
-def heartbeat(agent_id: str, payload: HeartbeatRequest, _: str = Depends(_authenticate_agent)) -> AgentResponse:
+def heartbeat(agent_id: str, payload: HeartbeatRequest) -> AgentResponse:
     agent = store.get_agent(agent_id)
     if not agent:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
@@ -88,7 +62,7 @@ def heartbeat(agent_id: str, payload: HeartbeatRequest, _: str = Depends(_authen
 
 
 @router.get("/{agent_id}/next-job", response_model=PullJobResponse | None)
-def next_job(agent_id: str, _: str = Depends(_authenticate_agent)) -> PullJobResponse | None:
+def next_job(agent_id: str) -> PullJobResponse | None:
     job = store.next_queued_job_for_agent(agent_id)
     if not job:
         return None
@@ -102,7 +76,7 @@ def next_job(agent_id: str, _: str = Depends(_authenticate_agent)) -> PullJobRes
 
 
 @router.post("/{agent_id}/inventory", response_model=AgentInventorySyncResponse)
-def sync_inventory(agent_id: str, payload: AgentInventorySyncRequest, _: str = Depends(_authenticate_agent)) -> AgentInventorySyncResponse:
+def sync_inventory(agent_id: str, payload: AgentInventorySyncRequest) -> AgentInventorySyncResponse:
     store.sync_container_inventory(agent_id=agent_id, containers=[item.model_dump() for item in payload.containers])
     return AgentInventorySyncResponse(synced=len(payload.containers))
 

@@ -353,12 +353,6 @@ button:disabled {
   font-size: 12px;
 }
 
-/* Settings page */
-.settings-page {
-  max-width: 600px;
-  margin: 0 auto;
-}
-
 /* Targets */
 .targets {
   list-style: none;
