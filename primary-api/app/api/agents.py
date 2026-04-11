@@ -31,7 +31,8 @@ def register_agent(payload: RegisterAgentRequest) -> AgentResponse:
 def heartbeat(agent_id: str, payload: HeartbeatRequest) -> AgentResponse:
     agent = store.get_agent(agent_id)
     if not agent:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
+        # Self-heal after primary resets: recreate missing agent on first heartbeat.
+        agent = store.upsert_agent(Agent(agent_id=agent_id, name=agent_id, capabilities={}))
 
     agent.status = payload.status
     agent.last_heartbeat = datetime.now(UTC)
@@ -47,6 +48,10 @@ def heartbeat(agent_id: str, payload: HeartbeatRequest) -> AgentResponse:
 
 @router.get("/{agent_id}/next-job", response_model=PullJobResponse | None)
 def next_job(agent_id: str) -> PullJobResponse | None:
+    if not store.get_agent(agent_id):
+        # Ensure older agents that don't auto-register still recover after state resets.
+        store.upsert_agent(Agent(agent_id=agent_id, name=agent_id, capabilities={}))
+
     job = store.next_queued_job_for_agent(agent_id)
     if not job:
         return None
@@ -61,6 +66,9 @@ def next_job(agent_id: str) -> PullJobResponse | None:
 
 @router.post("/{agent_id}/inventory", response_model=AgentInventorySyncResponse)
 def sync_inventory(agent_id: str, payload: AgentInventorySyncRequest) -> AgentInventorySyncResponse:
+    if not store.get_agent(agent_id):
+        store.upsert_agent(Agent(agent_id=agent_id, name=agent_id, capabilities={}))
+
     store.sync_container_inventory(agent_id=agent_id, containers=[item.model_dump() for item in payload.containers])
     return AgentInventorySyncResponse(synced=len(payload.containers))
 
