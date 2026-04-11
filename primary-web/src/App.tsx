@@ -26,6 +26,8 @@ export function App() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [targets, setTargets] = useState<DockerTarget[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [bootstrap, setBootstrap] = useState<{ command: string; expires_at: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -44,12 +46,16 @@ export function App() {
   );
   const sortedJobs = useMemo(() => [...jobs].sort((a, b) => b.created_at.localeCompare(a.created_at)), [jobs]);
 
-  async function refresh() {
+  async function refresh(showIndicator = false) {
+    if (showIndicator) {
+      setIsRefreshing(true);
+    }
     try {
       const [nextAgents, nextJobs, nextTargets] = await Promise.all([fetchAgents(), fetchJobs(), fetchDockerTargets()]);
       setAgents(nextAgents);
       setJobs(nextJobs);
       setTargets(nextTargets);
+      setLastUpdatedAt(new Date().toLocaleTimeString());
       setError(null);
 
       if (updateModal && !updateModal.agentId && nextAgents[0]) {
@@ -67,6 +73,10 @@ export function App() {
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      if (showIndicator) {
+        setIsRefreshing(false);
+      }
     }
   }
 
@@ -90,7 +100,7 @@ export function App() {
 
   useEffect(() => {
     refresh();
-    const id = window.setInterval(refresh, 5000);
+    const id = window.setInterval(() => refresh(), 5000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -124,8 +134,29 @@ export function App() {
 
   async function copyCommand() {
     if (!bootstrap) return;
-    await navigator.clipboard.writeText(bootstrap.command);
-    setCopied(true);
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(bootstrap.command);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = bootstrap.command;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const copiedOk = document.execCommand("copy");
+        document.body.removeChild(textarea);
+        if (!copiedOk) {
+          throw new Error("Copy failed");
+        }
+      }
+      setCopied(true);
+      setError(null);
+    } catch {
+      setCopied(false);
+      setError("Unable to copy automatically. Please copy the command manually.");
+    }
   }
 
   const agentsOnline = agents.filter((a) => a.status === "online").length;
@@ -139,12 +170,20 @@ export function App() {
       <header className="header">
         <h1 style={{ cursor: 'pointer' }} onClick={() => setPage('home')}>Docker Updater</h1>
         <div className="header-actions">
-          <button onClick={refresh} title="Refresh">{page === 'home' ? '↻' : ''}</button>
+          <button onClick={() => refresh(true)} title="Refresh" disabled={isRefreshing}>
+            {page === 'home' ? (isRefreshing ? '…' : '↻') : ''}
+          </button>
           <button onClick={() => setPage(page === 'home' ? 'settings' : 'home')} title={page === 'home' ? 'Settings' : 'Home'}>
             {page === 'home' ? '⚙' : '⌂'}
           </button>
         </div>
       </header>
+
+      {page === 'home' && (
+        <section className="muted" style={{ marginTop: "-0.5rem", marginBottom: "0.5rem" }}>
+          Last updated: {lastUpdatedAt ?? "pending..."}
+        </section>
+      )}
 
       {error ? <section className="error">{error}</section> : null}
 
