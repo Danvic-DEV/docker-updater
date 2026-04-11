@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import time
 from typing import Any
 
@@ -308,22 +308,8 @@ class PostgresStore:
                 for item in containers:
                     raw_name = str(item["name"])
                     storage_name = self._inventory_key(agent_id, raw_name)
-                    has_update, update_check_status, update_check_error = check_update_for_remote_image(
-                        str(item["image"]),
-                        str(item.get("image_id", "")),
-                    )
-                    details = dict(item.get("details") or {})
-                    details["agent_container_name"] = raw_name
-                    details["update_check_status"] = update_check_status
-                    details["update_check_error"] = update_check_error
-
-                    stored_item = {
-                        **item,
-                        "name": storage_name,
-                        "has_update": has_update,
-                        "details": details,
-                        "agent_id": agent_id,
-                    }
+                    image_ref = str(item["image"])
+                    image_id = str(item.get("image_id", ""))
 
                     cur.execute(
                         """
@@ -332,6 +318,60 @@ class PostgresStore:
                         (storage_name,),
                     )
                     existing = cur.fetchone()
+
+                    has_update = False
+                    update_check_status = "unknown"
+                    update_check_error = None
+                    update_checked_at = now.isoformat()
+
+                    if existing:
+                        existing_details = existing.get("details") or {}
+                        cached_checked_at = existing_details.get("update_checked_at")
+                        cached_status = existing_details.get("update_check_status")
+                        same_image_identity = (
+                            existing.get("image_ref") == image_ref
+                            and (existing.get("image_id") or "") == image_id
+                        )
+
+                        use_cache = False
+                        if cached_checked_at and cached_status in {"available", "up_to_date", "unknown"} and same_image_identity:
+                            try:
+                                checked_at = datetime.fromisoformat(str(cached_checked_at))
+                                if checked_at.tzinfo is None:
+                                    checked_at = checked_at.replace(tzinfo=UTC)
+                                use_cache = checked_at >= (now - timedelta(seconds=settings.update_check_ttl_seconds))
+                            except ValueError:
+                                use_cache = False
+
+                        if use_cache:
+                            has_update = bool(existing.get("has_update", False))
+                            update_check_status = str(cached_status)
+                            update_check_error = existing_details.get("update_check_error")
+                            update_checked_at = str(cached_checked_at)
+                        else:
+                            has_update, update_check_status, update_check_error = check_update_for_remote_image(
+                                image_ref,
+                                image_id,
+                            )
+                    else:
+                        has_update, update_check_status, update_check_error = check_update_for_remote_image(
+                            image_ref,
+                            image_id,
+                        )
+
+                    details = dict(item.get("details") or {})
+                    details["agent_container_name"] = raw_name
+                    details["update_check_status"] = update_check_status
+                    details["update_check_error"] = update_check_error
+                    details["update_checked_at"] = update_checked_at
+
+                    stored_item = {
+                        **item,
+                        "name": storage_name,
+                        "has_update": has_update,
+                        "details": details,
+                        "agent_id": agent_id,
+                    }
 
                     if not existing:
                         cur.execute(
