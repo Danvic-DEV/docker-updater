@@ -15,21 +15,33 @@ log = logging.getLogger(__name__)
 def run() -> None:
     api = PrimaryApiClient()
 
+    def register_with_retry() -> None:
+        while True:
+            try:
+                api.register()
+                log.info("Registered with primary")
+                return
+            except HTTPError as exc:
+                log.warning("Registration failed (%s), retrying in 5s", exc)
+                time.sleep(5)
+
     # Registration with retry so the agent survives a slow primary startup
-    while True:
-        try:
-            api.register()
-            log.info("Registered with primary")
-            break
-        except HTTPError as exc:
-            log.warning("Registration failed (%s), retrying in 5s", exc)
-            time.sleep(5)
+    register_with_retry()
 
     while True:
         got_job = False
         try:
             api.heartbeat()
-            api.sync_inventory(list_running_containers())
+        except HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                log.warning("Agent missing on primary; re-registering")
+                register_with_retry()
+            else:
+                log.warning("Transient API error: %s", exc)
+        except HTTPError as exc:
+            log.warning("Transient API error: %s", exc)
+
+        try:
             job = api.pull_next_job()
             if job:
                 got_job = True
@@ -43,14 +55,19 @@ def run() -> None:
         except HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 log.warning("Agent missing on primary; re-registering")
-                while True:
-                    try:
-                        api.register()
-                        log.info("Re-registered with primary")
-                        break
-                    except HTTPError as reg_exc:
-                        log.warning("Re-registration failed (%s), retrying in 5s", reg_exc)
-                        time.sleep(5)
+                register_with_retry()
+            else:
+                log.warning("Transient API error: %s", exc)
+        except HTTPError as exc:
+            log.warning("Transient API error: %s", exc)
+
+        # Inventory sync is best-effort and should never block job polling.
+        try:
+            api.sync_inventory(list_running_containers())
+        except HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                log.warning("Agent missing on primary; re-registering")
+                register_with_retry()
             else:
                 log.warning("Transient API error: %s", exc)
         except HTTPError as exc:
