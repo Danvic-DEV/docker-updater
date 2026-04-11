@@ -47,24 +47,8 @@ if [[ "${PRIMARY_EMBEDDED_AGENT_ENABLE:-true}" == "true" ]]; then
   export AGENT_ID="${PRIMARY_EMBEDDED_AGENT_ID:-primary-local-agent}"
   export AGENT_NAME="${PRIMARY_EMBEDDED_AGENT_NAME:-Primary Local Agent}"
   export PRIMARY_API_BASE_URL="${PRIMARY_EMBEDDED_AGENT_API_BASE_URL:-http://127.0.0.1:58000}"
-  export AGENT_TOKEN="${PRIMARY_EMBEDDED_AGENT_TOKEN:-}"
   export POLL_INTERVAL_SECONDS="${PRIMARY_EMBEDDED_AGENT_POLL_INTERVAL_SECONDS:-5}"
-  
-  # Auto-generate enrollment code if not provided
-  if [[ -z "${PRIMARY_EMBEDDED_AGENT_ENROLLMENT_CODE:-}" ]]; then
-    for _ in $(seq 1 15); do
-      ENROLLMENT_CODE=$(curl -s -X POST http://127.0.0.1:8001/api/agents/enrollment-codes -H 'Content-Type: application/json' -d '{"ttl_minutes":1440}' 2>/dev/null | grep -o '"enrollment_code":"[^"]*"' | cut -d'"' -f4 || true)
-      if [[ -n "$ENROLLMENT_CODE" ]]; then
-        echo "Generated enrollment code for embedded agent: $ENROLLMENT_CODE" >&2
-        break
-      fi
-      sleep 1
-    done
-  else
-    ENROLLMENT_CODE="${PRIMARY_EMBEDDED_AGENT_ENROLLMENT_CODE}"
-  fi
-  
-  export ENROLLMENT_CODE
+
   python -m app.main &
   LOCAL_AGENT_PID=$!
 fi

@@ -13,43 +13,6 @@ class RegisterAgentRequest(BaseModel):
     capabilities: dict[str, str] = Field(default_factory=dict)
 
 
-class EnrollAgentRequest(BaseModel):
-    enrollment_code: str
-    agent_id: str
-    name: str
-    capabilities: dict[str, str] = Field(default_factory=dict)
-
-
-class EnrollAgentResponse(BaseModel):
-    agent_id: str
-    name: str
-    status: AgentStatus
-    last_heartbeat: str
-    agent_token: str
-
-
-class CreateEnrollmentCodeRequest(BaseModel):
-    ttl_minutes: int = Field(default=60, ge=1, le=10080)
-
-
-class EnrollmentCodeResponse(BaseModel):
-    enrollment_code: str
-    expires_at: str
-
-
-class AgentBootstrapCommandRequest(BaseModel):
-    agent_id: str
-    agent_name: str
-    primary_api_base_url: str | None = None
-    agent_image: str | None = None
-
-
-class AgentBootstrapCommandResponse(BaseModel):
-    enrollment_code: str
-    expires_at: str
-    command: str
-
-
 class HeartbeatRequest(BaseModel):
     status: AgentStatus = "online"
 

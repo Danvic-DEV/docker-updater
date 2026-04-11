@@ -4,8 +4,6 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.models.api import (
     AgentResponse,
-    EnrollAgentRequest,
-    EnrollAgentResponse,
     HeartbeatRequest,
     AgentInventorySyncRequest,
     AgentInventorySyncResponse,
@@ -16,20 +14,6 @@ from app.models.domain import Agent
 from app.services.repositories import store
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
-
-
-@router.post("/enroll", response_model=EnrollAgentResponse)
-def enroll_agent(payload: EnrollAgentRequest) -> EnrollAgentResponse:
-    agent = store.upsert_agent(Agent(agent_id=payload.agent_id, name=payload.name, capabilities=payload.capabilities))
-    agent_token = store.issue_agent_token(agent.agent_id)
-
-    return EnrollAgentResponse(
-        agent_id=agent.agent_id,
-        name=agent.name,
-        status=agent.status,
-        last_heartbeat=agent.last_heartbeat.isoformat(),
-        agent_token=agent_token,
-    )
 
 
 @router.post("/register", response_model=AgentResponse)
