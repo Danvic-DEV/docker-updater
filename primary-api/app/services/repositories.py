@@ -361,7 +361,7 @@ class PostgresStore:
                     SET
                         status = %s,
                         updated_at = NOW(),
-                        logs = CASE WHEN %s IS NULL THEN logs ELSE array_append(logs, %s) END
+                        logs = CASE WHEN %s::text IS NULL THEN logs ELSE array_append(logs, %s::text) END
                     WHERE job_id = %s
                     RETURNING *
                     """,
