@@ -29,6 +29,7 @@ export function App() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [updateModal, setUpdateModal] = useState<{ target: DockerTarget; agentId: string } | null>(null);
+  const [isSubmittingUpdate, setIsSubmittingUpdate] = useState(false);
 
   const agentMap = useMemo(() => new Map(agents.map((a) => [a.agent_id, a.name])), [agents]);
   const sortedJobs = useMemo(() => [...jobs].sort((a, b) => b.created_at.localeCompare(a.created_at)), [jobs]);
@@ -61,6 +62,7 @@ export function App() {
     event.preventDefault();
     if (!updateModal?.target || !updateModal?.agentId) return;
 
+    setIsSubmittingUpdate(true);
     try {
       await createJob({
         target_ref: updateModal.target.image,
@@ -70,8 +72,11 @@ export function App() {
       });
       setUpdateModal(null);
       await refresh();
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create job");
+    } finally {
+      setIsSubmittingUpdate(false);
     }
   }
 
@@ -282,10 +287,10 @@ export function App() {
                 </select>
               </label>
               <div className="modal-actions">
-                <button type="button" onClick={() => setUpdateModal(null)} className="btn-secondary">
+                <button type="button" onClick={() => setUpdateModal(null)} className="btn-secondary" disabled={isSubmittingUpdate}>
                   Cancel
                 </button>
-                <button type="submit">Run Update</button>
+                <button type="submit" disabled={isSubmittingUpdate}>{isSubmittingUpdate ? '...' : 'Run Update'}</button>
               </div>
             </form>
           </div>
